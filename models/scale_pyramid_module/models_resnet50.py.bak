@@ -1,0 +1,143 @@
+import torch.nn as nn
+from .batchnorm import SynchronizedBatchNorm2d
+import torch
+
+#from segmentation_models_pytorch as MAnet, PSPNet, UNet
+from models.unet import Unet
+
+
+class Resnet50Spm(nn.Module):
+    def __init__(self):
+        super(Resnet50Spm, self).__init__()
+        self.model = Unet( # MAnet UnetPlusPlus DeepLabV3Plus PSPnet
+            encoder_name="vgg16", # dpn98 resnet152 vgg19_bn timm-resnest50d efficientnet-b5 timm-resnest50d_4s2x40d vgg19_bn mobilenet_v2 timm-efficientnet-lite4 timm-skresnext50_32x4d se_resnext50_32x4d timm-efficientnet-b6 se_resnext101_32x4d xception 
+            encoder_weights="imagenet",
+            in_channels=3,
+            classes=1,
+            activation=None, # "sigmoid"/"softmax" (could be **None** to return logits)
+            decoder_attention_type=None, # Optional[str] = None or scse
+            scale_pyramid_module=True, # add
+            use_attention_branch=True, # add
+        )
+
+        #self.spm = ScalePyramidModule()
+        #self.amp = BackEnd()
+        #self.dmp = BackEnd()
+
+        #self.conv_att = nn.Sequential(
+        #    nn.Conv2d(32, 32, kernel_size=3, padding=1),
+        #    nn.ReLU(inplace=True),
+        #    nn.Conv2d(32, 32, kernel_size=3, padding=1),
+        #    nn.ReLU(inplace=True),
+        #    nn.Conv2d(32, 1, kernel_size=1),
+        #    nn.Sigmoid(),
+        #)
+ 
+        self.density_layer = nn.Sequential(
+        #    nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.Conv2d(1, 1, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        #    nn.Conv2d(32, 32, kernel_size=3, padding=1),
+        #    nn.ReLU(inplace=True),
+        #    nn.Conv2d(32, 1, kernel_size=1),
+        #    nn.ReLU(), # not use activation!
+        )
+ 
+
+    def forward(self, input):
+        input = self.model(input)
+        #x = self.density_layer(input)
+
+        #spm_out = self.spm(*input) # input to ASPP & CAN module. return modified (conv2_2, conv3_3, conv4_3, conv5_3)
+        #amp_out = self.amp(*spm_out)
+        #dmp_out = self.dmp(*spm_out) # output 32-ch map
+
+        ## ADD branch_2
+        #amp_out = self.conv_att(amp_out)
+        #dmp_out = amp_out * dmp_out
+        #x = self.density_layer(dmp_out)
+
+        # Reshape Bx1xHxW -> BxHxW
+        # because probability map is real-valued by definition
+        #x = x.squeeze(1)
+
+        mu = x
+        B, C, H, W = mu.size()
+        mu_sum = mu.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+        mu_normed = mu / (mu_sum + 1e-6)
+        return mu, mu_normed
+
+
+
+
+class BackEnd(nn.Module):
+    def __init__(self):
+        super(BackEnd, self).__init__()
+        self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
+        self.upsample4 = nn.UpsamplingBilinear2d(scale_factor=4)
+        
+        self.conv1 = BaseConv(768, 256, 1, 1, activation=nn.ReLU(), use_bn=True)
+        self.conv2 = BaseConv(256, 256, 3, 1, activation=nn.ReLU(), use_bn=True)
+        self.conv2_2 = BaseConv(256, 256, 3, 1, activation=nn.ReLU(), use_bn=True)
+        
+        self.conv3 = BaseConv(768, 128, 1, 1, activation=nn.ReLU(), use_bn=True)
+        self.conv4 = BaseConv(128, 128, 3, 1, activation=nn.ReLU(), use_bn=True)
+        self.conv4_2 = BaseConv(128, 128, 3, 1, activation=nn.ReLU(), use_bn=True)
+
+        self.conv5 = BaseConv(256, 64, 1, 1, activation=nn.ReLU(), use_bn=True)
+        self.conv6 = BaseConv(64, 64, 3, 1, activation=nn.ReLU(), use_bn=True)
+        self.conv7 = BaseConv(64, 32, 3, 1, activation=nn.ReLU(), use_bn=True)
+
+        self.conv8 = BaseConv(32, 32, 3, 1, activation=nn.ReLU(), use_bn=True) # activation=None?
+        self.conv9 = BaseConv(32, 32, 3, 1, activation=nn.ReLU(), use_bn=True) # activation=None?
+
+    def forward(self, *input):
+        conv1_2, conv2_2, conv3_3, conv4_3, conv5_3 = input
+
+        input = self.upsample(conv5_3)
+        
+        input = torch.cat([input, conv4_3], 1)
+        input = self.conv1(input)
+        input = self.conv2(input)
+        input = self.conv2_2(input)
+        input = self.upsample(input)
+        
+        input = torch.cat([input, conv3_3, self.upsample4(conv5_3)], 1)
+        input = self.conv3(input)
+        input = self.conv4(input)
+        input = self.conv4_2(input)
+        input = self.upsample(input)
+
+        input = torch.cat([input, conv2_2], 1)
+        input = self.conv5(input)
+        input = self.conv6(input)
+        input = self.conv7(input)
+        # ADD
+        input = self.upsample(input)
+        #input = torch.cat([input, conv1_2], 1)
+        input = self.conv8(input)
+        input = self.conv9(input)
+ 
+        return input
+
+
+class BaseConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel, stride=1, activation=None, use_bn=False):
+        super(BaseConv, self).__init__()
+        self.use_bn = use_bn
+        self.activation = activation
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel, stride, kernel // 2)
+        self.conv.weight.data.normal_(0, 0.01)
+        self.conv.bias.data.zero_()
+        self.bn = SynchronizedBatchNorm2d(out_channels)
+        self.bn.weight.data.fill_(1)
+        self.bn.bias.data.zero_()
+
+    def forward(self, input):
+        input = self.conv(input)
+        if self.use_bn:
+            input = self.bn(input)
+        if self.activation:
+            input = self.activation(input)
+
+        return input
