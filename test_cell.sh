@@ -41,7 +41,7 @@ model_path=/media/prostate/20210315_LOWB/DM-Count_modify/DM-Count/ckpts/encoder-
 
 data_path=/media/prostate/20210331_PDL1/nuclei_detection/YOLO/darknet/cfg/task/datasets
 dataset=cell #<dataset name: qnrf, sha, shb or nwpu>\
-pred_density_map_path=/media/prostate/20210315_LOWB/DM-Count_modify/DM-Count/ckpts/tmp/val_vgg19_res512_CEL1_332_reg1_wot0.1_wtv0.7
+pred_density_map_path=/media/prostate/20210315_LOWB/DM-Count_modify/DM-Count/ckpts/tmp/0514_BN_DAB_thres92_val_vgg19_res512_CEL1_332_reg1_wot0.1_wtv0.7
 #test_type=test_no_gt # 'val' 'val_with_gt' 'test_no_gt'
 #test_type=val_with_gt # 'val' 'val_with_gt' 'test_no_gt'
 test_type=val # 'val' 'val_with_gt' 'test_no_gt'
@@ -65,4 +65,7 @@ python3 test.py \
 --downsample-ratio $downsample_ratio \
 --cfg $cfg \
 --pred-density-map-path $pred_density_map_path
+
+
+
 

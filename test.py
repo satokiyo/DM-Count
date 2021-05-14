@@ -40,7 +40,7 @@ parser.add_argument('opts',
 
 args = parser.parse_args()
 
-def paint_center(args, img, liklihoodmap, taus=[-1]):
+def paint_center(args, img, liklihoodmap, taus=[-1], org_img=None):
     """ 'tau=-1 means dynamic Otsu thresholding. '
         'tau=-2 means Beta Mixture Model-based thresholding.') """
     # The estimated map must be thresholded to obtain estimated points
@@ -109,9 +109,12 @@ def paint_center(args, img, liklihoodmap, taus=[-1]):
         rect = (0, 0, img.shape[1], img.shape[2])
         subdiv = cv2.Subdiv2D(rect)
         for p in center: # center[:,[1,0]]?
-            subdiv.insert((p[0], p[1]))
+            subdiv.insert((int(p[0]), int(p[1])))
         facets, centers = subdiv.getVoronoiFacetList([])
         img_draw = img.transpose(1,2,0).copy()
+        img_draw_DAB = org_img.transpose(1,2,0).copy()
+        org_img_copy = org_img.transpose(1,2,0).copy()
+
         #cv2.polylines(img_draw, [f.astype(int) for f in facets], True, (255, 255, 255), thickness=2) # draw voronoi
         #cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + f'painted_on_estmap_tau_{round(tau, 4)}_volonoi.jpg'), img_draw)
 
@@ -122,11 +125,43 @@ def paint_center(args, img, liklihoodmap, taus=[-1]):
         cells = []
         for i,(center, points) in enumerate(zip(centers, facets)):
             mask1 = cv2.fillPoly(mat.copy(), [points], (255)) # make binary mask
-            mask2 = cv2.circle(mat.copy(),(center[0],center[1]), radius, (255), -1)
+            mask2 = cv2.circle(mat.copy(),(int(center[0]), int(center[1])), radius, (255), -1)
             intersection = mask1 & mask2
             con, hierarchy = cv2.findContours(intersection,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+            # todo convert to BN image -> thresholding -> merge to orig img
+            # Create a mask image that contains the contour filled in
+#            org_img_copy = org_img.transpose(1,2,0).copy()
+#            mask3 = np.zeros((org_img_copy.shape[0], org_img_copy.shape[0]), np.uint8)
+            mask3 = np.zeros_like(mat, np.uint8)
+            mask3 = cv2.drawContours(mask3, con, -1, 255, 1)
+            contour_area = np.count_nonzero(mask3) # 後で使うpixel単位面積
+            # Access the image pixels and create a 1D numpy array then add to list
+            #mask = (mask3[:,:,0]==255) & (mask3[:,:,1]==255) & (mask3[:,:,2]==255).astype(np.uint8)
+            mask4 = (mask3==255).astype(np.uint8) # contour region mask
+            mask4 = np.dstack([mask4,mask4,mask4])
+            target_pixels = org_img_copy * mask4
+            #target_pixels = target_pixels[target_pixels!=0].reshape(-1,3)
+            #target_pixels = target_pixels[np.where(((target_pixels[:,:,0] != 0) & (target_pixels[:,:,0] != 1) & (target_pixels[:,:,2] != 0)), 1,0)]
+            target_pixels = target_pixels.astype(np.float32)
+            B = target_pixels[:,:,0] # B-ch
+            G = target_pixels[:,:,1] # G-ch
+            R = target_pixels[:,:,2] # R-ch
+            #e=1e-6
+            BN = 255*np.divide(B, (B+G+R), out=np.zeros_like(B), where=(B+G+R)!=0) # ref.paper : Automated Selection of DAB-labeled Tissue for Immunohistochemical Quantification
+            intensity_thres=92
+            area_thres=0.1 # over 10% area
+            over_thres_area = np.count_nonzero(BN>intensity_thres)
+            if (over_thres_area / contour_area) > area_thres:
+                #描画
+                img_draw_DAB = cv2.drawContours(img_draw_DAB , con, -1, (255,0,0), 1) # draw voronoi with restricted redius
+            else:
+                img_draw_DAB = cv2.drawContours(img_draw_DAB , con, -1, (0,0,100), 1) # draw voronoi with restricted redius
+
             img_draw = cv2.drawContours(img_draw, con, -1, (0,255,0), 1) # draw voronoi with restricted redius
+
         cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + f'painted_on_estmap_tau_{round(tau, 4)}_volonoi.jpg'), img_draw)
+        cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + f'painted_on_estmap_tau_{round(tau, 4)}_dab.jpg'), cv2.cvtColor(img_draw_DAB, cv2.COLOR_BGR2RGB))
+        
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.device  # set vis gpu
 device = torch.device('cuda')
@@ -208,7 +243,7 @@ if args.test_type == 'val':
             cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + '.jpg'), img_w_heatmap.transpose(1,2,0))
 
             # detect/draw center point
-            paint_center(args, img_w_heatmap, vis_img2, taus=[-1])
+            paint_center(args, img_w_heatmap, vis_img2, taus=[-1], org_img=org_img)
             #paint_center(args, img_w_heatmap, vis_img2, taus=[0.47])
     
     image_errs = np.array(image_errs)
@@ -263,7 +298,7 @@ elif args.test_type == 'val_with_gt': # show gt overlay
             cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + '.jpg'), img_w_gt.transpose(1,2,0))
 
             # detect/draw center point
-            paint_center(args, img_w_gt, vis_img2, taus=[-1])
+            paint_center(args, img_w_gt, vis_img2, taus=[-1], org_img=org_img)
             #paint_center(args, img_w_gt, vis_img2, taus=[0.47])
     
     image_errs = np.array(image_errs)
@@ -307,7 +342,7 @@ elif args.test_type == 'test_no_gt': # without gt
             cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + '.jpg'), img_w_heatmap.transpose(1,2,0))
  
             # detect/draw center point
-            paint_center(args, img_w_heatmap, vis_img2, taus=[-1])
+            paint_center(args, img_w_heatmap, vis_img2, taus=[-1], org_img=org_img)
             #paint_center(args, img_w_heatmap, vis_img2, taus=[0.47])
 
     print("elapsed : {}".format(time.time()-start))
