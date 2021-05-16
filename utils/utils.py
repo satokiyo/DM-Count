@@ -294,7 +294,7 @@ def paint_circles(img, points, color='red', crosshair=False):
     """
     Paint points as circles on top of an image.
 
-    :param img: RGB image (numpy array).
+    :param img: BGR image (numpy array).
                 Must be between 0 and 255.
                 First dimension must be color.
     :param centroids: List of centroids in (y, x) format.
@@ -307,7 +307,8 @@ def paint_circles(img, points, color='red', crosshair=False):
     """
 
     if color == 'red':
-        color = [255, 0, 0]
+        #color = [255, 0, 0]
+        color = [0, 0, 255] # BGR
     elif color == 'white':
         color = [255, 255, 255]
     else:
