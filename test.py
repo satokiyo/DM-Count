@@ -146,8 +146,8 @@ def paint_center(args, img, liklihoodmap, taus=[-1], org_img=None):
             contour_area = np.count_nonzero(mask3) # 後で使うpixel単位面積
             mask4 = (mask3==255).astype(np.uint8) # contour region mask
             contour_DAB = DAB * mask4
-            intensity_thres=178
-            area_thres=0.04 # over 10% area
+            intensity_thres=175
+            area_thres=0.1 # over 10% area
             over_thres_area = np.count_nonzero(contour_DAB > intensity_thres)
 
             if (over_thres_area / contour_area) > area_thres: # 1-NonNucleusArea > 0.1
