@@ -8,8 +8,8 @@ class SegmentationHead(nn.Module):
 
     def __init__(self, in_channels, out_channels, kernel_size=3, activation=None, upsampling=1, use_attention_branch=False):
         super(SegmentationHead, self).__init__()
-        #self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
         self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, padding=kernel_size // 2)
+        self.conv2d2 = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
         self.upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
         self.activation = Activation(activation)
 
@@ -43,14 +43,13 @@ class SegmentationHead(nn.Module):
         x = self.conv2d(x)
         x = self.upsampling(x)
         x = self.conv2d(x) # Add
-        x = self.conv2d(x) # Add
+        x = self.conv2d2(x) # Add
 
         if self.use_attention_branch:
             x2 = self.conv_att(x)
             x =  x * x2
-
         x = self.activation(x)
-        x = self.activation2(x)
+#        x = self.activation2(x)
 
         return x
 

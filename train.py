@@ -3,6 +3,7 @@ import os
 import torch
 from train_helper import Trainer
 from regression_trainer import RegTrainer
+from segmentation_trainer import SegTrainer
 
 
 def str2bool(v):
@@ -11,36 +12,19 @@ def str2bool(v):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
-    parser.add_argument('--data-dir', default='data/UCF-Train-Val-Test', help='data path')
-    parser.add_argument('--dataset', default='qnrf', help='dataset name: qnrf, nwpu, sha, shb')
-    parser.add_argument('--lr', type=float, default=1e-5,
-                        help='the initial learning rate')
-    parser.add_argument('--weight-decay', type=float, default=1e-4,
-                        help='the weight decay')
-    parser.add_argument('--resume', default='', type=str,
-                        help='the path of resume training model')
-    parser.add_argument('--max-epoch', type=int, default=1000,
-                        help='max training epoch')
-    parser.add_argument('--val-epoch', type=int, default=5,
-                        help='the num of steps to log training information')
-    parser.add_argument('--val-start', type=int, default=50,
-                        help='the epoch start to val')
-    parser.add_argument('--batch-size', type=int, default=10,
-                        help='train batch size')
+    parser.add_argument('--data-dir', help='data path')
+    parser.add_argument('--dataset', default='segmentation', help='dataset name: segmentation')
+    parser.add_argument('--lr', type=float, default=1e-5, help='the initial learning rate')
+    parser.add_argument('--weight-decay', type=float, default=1e-4, help='the weight decay')
+    parser.add_argument('--resume', default='', type=str, help='the path of resume training model')
+    parser.add_argument('--max-epoch', type=int, default=1000, help='max training epoch')
+    parser.add_argument('--val-epoch', type=int, default=5, help='the num of steps to log training information')
+    parser.add_argument('--val-start', type=int, default=50, help='the epoch start to val')
+    parser.add_argument('--batch-size', type=int, default=10, help='train batch size')
     parser.add_argument('--device', default='0', help='assign device')
-    parser.add_argument('--num-workers', type=int, default=3,
-                        help='the num of training process')
-    parser.add_argument('--crop-size', type=int, default=512,
-                        help='the crop size of the train image')
-    parser.add_argument('--wot', type=float, default=0.1, help='weight on OT loss')
-    parser.add_argument('--wtv', type=float, default=0.01, help='weight on TV loss')
-    parser.add_argument('--reg', type=float, default=10.0,
-                        help='entropy regularization in sinkhorn')
-    parser.add_argument('--num-of-iter-in-ot', type=int, default=100,
-                        help='sinkhorn iterations')
-    parser.add_argument('--norm-cood', type=int, default=0, help='whether to norm cood when computing distance')
+    parser.add_argument('--num-workers', type=int, default=3, help='the num of training process')
+    parser.add_argument('--crop-size', type=int, default=512, help='the crop size of the train image')
     parser.add_argument('--downsample-ratio', type=int, default=1)
-
     parser.add_argument('--visdom-env',
                            default='default_environment',
                            type=str,
@@ -69,15 +53,8 @@ def parse_args():
     parser.add_argument('--t_0', type=int, default=35) #Number of iterations for the first restart of annealingwarmrestart
     parser.add_argument('--t_mult', type=int, default=1) # A factor increases after a restart. Default: 1.
     parser.add_argument('--neptune-tag', type=str, nargs='*')
+    parser.add_argument('--activation', type=str,default=None)
 
-#    parser.add_argument('--use-background', type=bool, default=True,
-#                        help='whether to use background modelling')
-#    parser.add_argument('--sigma', type=float, default=8.0,
-#                        help='sigma for likelihood')
-#    parser.add_argument('--background-ratio', type=float, default=0.15,
-#                        help='background ratio')
-
-    parser.add_argument('--cfg', type=str, default='')
     parser.add_argument('opts',
                         help="Modify config options using the command-line",
                         default=None,
@@ -93,7 +70,8 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()  # set vis gpu
     torch.cuda.empty_cache()
-    trainer = Trainer(args)
+#    trainer = Trainer(args)
 #    trainer = RegTrainer(args)
+    trainer = SegTrainer(args)
     trainer.setup()
     trainer.train()
