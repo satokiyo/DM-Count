@@ -147,16 +147,16 @@ class SegDataset(Base):
         img = F.crop(img, i, j, h, w)
         gt = F.crop(gt, i, j, h, w)
 
-        if self.use_copy_paste:
-            transformed = self.copy_paste_aug(image=np.array(img), mask=np.array(gt))
-            img, gt = transformed['image'], transformed['mask']
- 
         if self.use_albumentation:
             transformed = self.albumentations(image=np.array(img), mask=np.array(gt))
             img, gt = transformed['image'], transformed['mask']
             img = augment_and_mix(np.float32(img)/255, severity=10)
             img = np.uint8((img+1)/2*255)
 
+        if self.use_copy_paste:
+            transformed = self.copy_paste_aug(image=np.array(img), mask=np.array(gt))
+            img, gt = transformed['image'], transformed['mask']
+ 
         img = Image.fromarray(img)
         gt = Image.fromarray(np.uint8(gt))
 
