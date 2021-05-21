@@ -18,6 +18,7 @@ class SegModel(nn.Module):
             scale_pyramid_module=args.scale_pyramid_module, # add
             use_attention_branch=args.use_attention_branch, # add
             downsample_ratio=args.downsample_ratio, # add
+            deep_supervision=args.deep_supervision, # add
         )
 
 #        self.model = UnetPlusPlus( # MAnet UnetPlusPlus DeepLabV3Plus PSPnet

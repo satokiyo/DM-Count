@@ -62,6 +62,7 @@ class Unet(SegmentationModel):
         scale_pyramid_module = False, # add
         use_attention_branch=False, # add
         downsample_ratio=1, # add
+        deep_supervision=1, # add
     ):
         super().__init__()
 
@@ -81,6 +82,8 @@ class Unet(SegmentationModel):
             attention_type=decoder_attention_type,
             scale_pyramid_module=scale_pyramid_module, # add
             downsample_ratio=downsample_ratio, # add
+            n_class=classes, # add
+            deep_supervision=deep_supervision, # add
         )
         # ADD  どこまでupsample・concatするか?デフォルトはinputと同じサイズまで
         i=-1
@@ -106,4 +109,53 @@ class Unet(SegmentationModel):
             self.classification_head = None
 
         self.name = "u-{}".format(encoder_name)
+        self.deep_supervision = deep_supervision
         self.initialize()
+
+    # override
+    def forward(self, x):
+        """Sequentially pass `x` trough model`s encoder, decoder and heads"""
+        features = self.encoder(x)
+        if self.deep_supervision:
+            decoder_output, intermediate_output = self.decoder(*features)
+
+            masks = self.segmentation_head(decoder_output)
+    
+            if self.classification_head is not None:
+                labels = self.classification_head(features[-1])
+                return masks, labels, intermediate_output
+    
+            return masks, intermediate_output
+
+        else:
+            decoder_output = self.decoder(*features)
+
+            masks = self.segmentation_head(decoder_output)
+    
+            if self.classification_head is not None:
+                labels = self.classification_head(features[-1])
+                return masks, labels
+    
+            return masks
+
+    def predict(self, x):
+        """Inference method. Switch model to `eval` mode, call `.forward(x)` with `torch.no_grad()`
+
+        Args:
+            x: 4D torch tensor with shape (batch_size, channels, height, width)
+
+        Return:
+            prediction: 4D torch tensor with shape (batch_size, classes, height, width)
+
+        """
+        if self.training:
+            self.eval()
+
+        with torch.no_grad():
+            if self.deep_supervision:
+                x, hx = self.forward(x)
+                return x, hx
+            else:
+                x = self.forward(x)
+                return x
+

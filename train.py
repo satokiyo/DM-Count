@@ -4,7 +4,7 @@ import torch
 from train_helper import Trainer
 from regression_trainer import RegTrainer
 from segmentation_trainer import SegTrainer
-
+import torch.backends.cudnn as cudnn
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -48,12 +48,15 @@ def parse_args():
     parser.add_argument('--use_attention_branch', type=int, default=0,) 
     parser.add_argument('--data_check', type=int, default=0,) 
     parser.add_argument('--use_albumentation', type=int, default=0,)
+    parser.add_argument('--use_copy_paste', type=int, default=0,)
     parser.add_argument('--project', type=str, default="test")
     parser.add_argument('--input-size', type=int, default=512) 
     parser.add_argument('--t_0', type=int, default=35) #Number of iterations for the first restart of annealingwarmrestart
     parser.add_argument('--t_mult', type=int, default=1) # A factor increases after a restart. Default: 1.
     parser.add_argument('--neptune-tag', type=str, nargs='*')
     parser.add_argument('--activation', type=str,default=None)
+    parser.add_argument('--deep_supervision', type=int,default=1)
+    parser.add_argument('--cfg', type=str,default="")
 
     parser.add_argument('opts',
                         help="Modify config options using the command-line",
@@ -67,7 +70,11 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    torch.backends.cudnn.benchmark = True
+    # cudnn related setting
+    cudnn.benchmark = True
+    cudnn.deterministic = True
+    cudnn.enabled = True
+
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()  # set vis gpu
     torch.cuda.empty_cache()
 #    trainer = Trainer(args)

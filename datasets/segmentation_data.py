@@ -11,6 +11,7 @@ import scipy.io as sio
 import albumentations as A
 from .augment_and_mix import augment_and_mix
 from pathlib import Path
+from .copy_paste import copy_paste_class, CopyPaste
 
 
 
@@ -47,12 +48,13 @@ class Base(data.Dataset):
         pass
 
 
-
+@copy_paste_class
 class SegDataset(Base):
     def __init__(self, root_path_img, root_path_ano=None, crop_size=512,
                  downsample_ratio=1,
                  method='train',
-                 use_albumentation=0):
+                 use_albumentation=0,
+                 use_copy_paste=0,):
         super().__init__(root_path_img, root_path_ano, crop_size, downsample_ratio)
         self.method = method
         if method not in ['train', 'val', 'val_no_gt', 'test_no_gt']:
@@ -70,6 +72,11 @@ class SegDataset(Base):
 
         print('number of img: {}'.format(len(self.im_list)))
 
+        self.use_copy_paste = use_copy_paste
+        if use_copy_paste:
+            self.copy_paste_aug = A.Compose([
+                                       CopyPaste(blend=True, sigma=1, pct_objects_paste=0.8, p=0.8), #pct_objects_paste is a guess
+                                   ])  
 
         self.use_albumentation = use_albumentation
         if use_albumentation:
@@ -98,7 +105,8 @@ class SegDataset(Base):
     def __len__(self):
         return len(self.im_list)
 
-    def __getitem__(self, item):
+    def load_example(self, item):
+#    def __getitem__(self, item):
         img_path = self.im_list[item]
         img = Image.open(img_path).convert('RGB')
         if self.gt_list:
@@ -139,12 +147,19 @@ class SegDataset(Base):
         img = F.crop(img, i, j, h, w)
         gt = F.crop(gt, i, j, h, w)
 
+        if self.use_copy_paste:
+            transformed = self.copy_paste_aug(image=np.array(img), mask=np.array(gt))
+            img, gt = transformed['image'], transformed['mask']
+ 
         if self.use_albumentation:
             transformed = self.albumentations(image=np.array(img), mask=np.array(gt))
             img, gt = transformed['image'], transformed['mask']
             img = augment_and_mix(np.float32(img)/255, severity=10)
-            img = Image.fromarray(np.uint8((img+1)/2*255))
-            gt = Image.fromarray(np.uint8(gt))
+            img = np.uint8((img+1)/2*255)
+
+        img = Image.fromarray(img)
+        gt = Image.fromarray(np.uint8(gt))
+
         if random.random() > 0.5:
             img = F.hflip(img)
             gt = F.hflip(gt)
