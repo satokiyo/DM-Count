@@ -266,60 +266,65 @@ class CopyPaste(A.DualTransform):
 
 def copy_paste_class(dataset_class):
     def _split_transforms(self):
-        split_index = None
-        for ix, tf in enumerate(list(self.copy_paste_aug.transforms)):
-            if tf.get_class_fullname() == 'copypaste.CopyPaste':
-                split_index = ix
+        if self.use_copy_paste:
+            split_index = None
+            for ix, tf in enumerate(list(self.copy_paste_aug.transforms)):
+                if tf.get_class_fullname() == 'copypaste.CopyPaste':
+                    split_index = ix
 
-        if split_index is not None:
-            tfs = list(self.copy_paste_aug.transforms)
-            pre_copy = tfs[:split_index]
-            copy_paste = tfs[split_index]
-            post_copy = tfs[split_index+1:]
+            if split_index is not None:
+                tfs = list(self.copy_paste_aug.transforms)
+                pre_copy = tfs[:split_index]
+                copy_paste = tfs[split_index]
+                post_copy = tfs[split_index+1:]
 
-            #replicate the other augmentation parameters
-            bbox_params = None
-            keypoint_params = None
-            mask_params = None
-            masks_params = None
-            paste_additional_targets = {}
+                #replicate the other augmentation parameters
+                bbox_params = None
+                keypoint_params = None
+                mask_params = None
+                masks_params = None
+                paste_additional_targets = {}
 
-            if 'bboxes' in self.copy_paste_aug.processors:
-                bbox_params = self.copy_paste_aug.processors['bboxes'].params
-                paste_additional_targets['paste_bboxes'] = 'bboxes'
-                if self.copy_paste_aug.processors['bboxes'].params.label_fields:
-                    msg = "Copy-paste does not support bbox label_fields! "
-                    msg += "Expected bbox format is (a, b, c, d, label_field)"
-                    raise Exception(msg)
-            if 'keypoints' in self.copy_paste_aug.processors:
-                keypoint_params = self.copy_paste_aug.processors['keypoints'].params
-                paste_additional_targets['paste_keypoints'] = 'keypoints'
-                if keypoint_params.label_fields:
-                    raise Exception('Copy-paste does not support keypoint label fields!')
-            if 'mask' in self.copy_paste_aug.processors:
-                mask_params = self.copy_paste_aug.processors['mask'].params
-                paste_additional_targets['paste_mask'] = 'mask'
-                if self.copy_paste_aug.processors['mask'].params.label_fields:
-                    msg = "Copy-paste does not support mask label_fields! "
-                    raise Exception(msg)
-            if 'masks' in self.copy_paste_aug.processors:
-                masks_params = self.copy_paste_aug.processors['masks'].params
-                paste_additional_targets['paste_masks'] = 'masks'
-                if self.copy_paste_aug.processors['masks'].params.label_fields:
-                    msg = "Copy-paste does not support masks label_fields! "
-                    raise Exception(msg)
+                if 'bboxes' in self.copy_paste_aug.processors:
+                    bbox_params = self.copy_paste_aug.processors['bboxes'].params
+                    paste_additional_targets['paste_bboxes'] = 'bboxes'
+                    if self.copy_paste_aug.processors['bboxes'].params.label_fields:
+                        msg = "Copy-paste does not support bbox label_fields! "
+                        msg += "Expected bbox format is (a, b, c, d, label_field)"
+                        raise Exception(msg)
+                if 'keypoints' in self.copy_paste_aug.processors:
+                    keypoint_params = self.copy_paste_aug.processors['keypoints'].params
+                    paste_additional_targets['paste_keypoints'] = 'keypoints'
+                    if keypoint_params.label_fields:
+                        raise Exception('Copy-paste does not support keypoint label fields!')
+                if 'mask' in self.copy_paste_aug.processors:
+                    mask_params = self.copy_paste_aug.processors['mask'].params
+                    paste_additional_targets['paste_mask'] = 'mask'
+                    if self.copy_paste_aug.processors['mask'].params.label_fields:
+                        msg = "Copy-paste does not support mask label_fields! "
+                        raise Exception(msg)
+                if 'masks' in self.copy_paste_aug.processors:
+                    masks_params = self.copy_paste_aug.processors['masks'].params
+                    paste_additional_targets['paste_masks'] = 'masks'
+                    if self.copy_paste_aug.processors['masks'].params.label_fields:
+                        msg = "Copy-paste does not support masks label_fields! "
+                        raise Exception(msg)
  
-            if self.copy_paste_aug.additional_targets:
-                raise Exception('Copy-paste does not support additional_targets!')
+                if self.copy_paste_aug.additional_targets:
+                    raise Exception('Copy-paste does not support additional_targets!')
 
-            #recreate transforms
-            #self.transforms = A.Compose(pre_copy, bbox_params, keypoint_params, additional_targets=None)
-            self.copy_paste_aug = A.Compose(pre_copy, mask_params, additional_targets=None)
-            #self.post_transforms = A.Compose(post_copy, bbox_params, keypoint_params, additional_targets=None)
-            self.post_transforms = A.Compose(post_copy, mask_params, additional_targets=None)
-            self.copy_paste = A.Compose(
-                [copy_paste], mask_params, additional_targets=paste_additional_targets
-            )
+                #recreate transforms
+                #self.transforms = A.Compose(pre_copy, bbox_params, keypoint_params, additional_targets=None)
+                self.copy_paste_aug = A.Compose(pre_copy, mask_params, additional_targets=None)
+                #self.post_transforms = A.Compose(post_copy, bbox_params, keypoint_params, additional_targets=None)
+                self.post_transforms = A.Compose(post_copy, mask_params, additional_targets=None)
+                self.copy_paste = A.Compose(
+                    [copy_paste], mask_params, additional_targets=paste_additional_targets
+                )
+
+            else:
+                self.copy_paste = None
+                self.post_transforms = None
         else:
             self.copy_paste = None
             self.post_transforms = None

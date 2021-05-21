@@ -157,6 +157,11 @@ class SegDataset(Base):
             transformed = self.copy_paste_aug(image=np.array(img), mask=np.array(gt))
             img, gt = transformed['image'], transformed['mask']
  
+        if not isinstance(img, (np.ndarray, np.generic)):
+            img = np.array(img)
+        if not isinstance(gt, (np.ndarray, np.generic)):
+            gt = np.array(gt)
+
         img = Image.fromarray(img)
         gt = Image.fromarray(np.uint8(gt))
 

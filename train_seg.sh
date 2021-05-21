@@ -28,6 +28,8 @@ neptune_tag=('me' 'seg')
 #encoder_name=hrnet_seg_ocr # vgg19_bn hrnet_seg hrnet_seg_ocr
 #batch_size=2
 #deep_supervision=0
+#use_albumentation=1
+#use_copy_paste=1
 #
 #python3 train.py \
 #--project $project \
@@ -48,7 +50,8 @@ neptune_tag=('me' 'seg')
 #--classes 4 \
 #--scale_pyramid_module 1 \
 #--use_attention_branch 0 \
-#--use_albumentation 1 \
+#--use_albumentation $use_albumentation \
+#--use_copy_paste $use_copy_paste \
 #--downsample-ratio $downsample_ratio \
 #--activation $activation \
 #--deep_supervision $deep_supervision \
@@ -60,10 +63,13 @@ neptune_tag=('me' 'seg')
 
 ## change
 activation=identity # Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
-neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'deep_supervision')
+#neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'deep_supervision')
+neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'deep_supervision' 'copy_paste')
 encoder_name=vgg19_bn # vgg19_bn hrnet_seg hrnet_seg_ocr
 batch_size=4
 deep_supervision=1
+use_albumentation=1
+use_copy_paste=1
 
 python3 train.py \
 --project $project \
@@ -84,7 +90,8 @@ python3 train.py \
 --classes 4 \
 --scale_pyramid_module 1 \
 --use_attention_branch 0 \
---use_albumentation 1 \
+--use_albumentation $use_albumentation \
+--use_copy_paste $use_copy_paste \
 --downsample-ratio $downsample_ratio \
 --activation $activation \
 --deep_supervision $deep_supervision \
@@ -94,36 +101,39 @@ python3 train.py \
 
 
 
-## change
-activation=identity # Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
-neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet')
-encoder_name=vgg19_bn # vgg19_bn hrnet_seg hrnet_seg_ocr
-batch_size=4
-deep_supervision=0
-
-python3 train.py \
---project $project \
---neptune-tag ${neptune_tag[@]} \
---dataset $datasetname \
---data-dir $datadir \
---device 0 \
---lr $lr \
---max-epoch $max_epoch \
---val-epoch $val_epoch \
---val-start $val_start \
---batch-size $batch_size \
---num-workers $num_workers \
---input-size $input_size \
---crop-size $crop_size \
---visdom-server $visdom_server \
---encoder_name $encoder_name \
---classes 4 \
---scale_pyramid_module 1 \
---use_attention_branch 0 \
---use_albumentation 1 \
---downsample-ratio $downsample_ratio \
---activation $activation \
---deep_supervision $deep_supervision \
---cfg $cfg \
---weight-decay $weight_decay
+### change
+#activation=identity # Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
+#neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet')
+#encoder_name=vgg19_bn # vgg19_bn hrnet_seg hrnet_seg_ocr
+#batch_size=4
+#deep_supervision=0
+#use_albumentation=1
+#use_copy_paste=1
+#
+#python3 train.py \
+#--project $project \
+#--neptune-tag ${neptune_tag[@]} \
+#--dataset $datasetname \
+#--data-dir $datadir \
+#--device 0 \
+#--lr $lr \
+#--max-epoch $max_epoch \
+#--val-epoch $val_epoch \
+#--val-start $val_start \
+#--batch-size $batch_size \
+#--num-workers $num_workers \
+#--input-size $input_size \
+#--crop-size $crop_size \
+#--visdom-server $visdom_server \
+#--encoder_name $encoder_name \
+#--classes 4 \
+#--scale_pyramid_module 1 \
+#--use_attention_branch 0 \
+#--use_albumentation $use_albumentation \
+#--use_copy_paste $use_copy_paste \
+#--downsample-ratio $downsample_ratio \
+#--activation $activation \
+#--deep_supervision $deep_supervision \
+#--cfg $cfg \
+#--weight-decay $weight_decay
 

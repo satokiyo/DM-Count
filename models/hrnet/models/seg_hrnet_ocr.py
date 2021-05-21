@@ -56,6 +56,8 @@ class SpatialGather_Module(nn.Module):
         self.cls_num = cls_num
         self.scale = scale
 
+    # feats : 普通のoutput feature 512ch
+    # probs : こっちがcoarse object map. class_numのchannelのマップ
     def forward(self, feats, probs):
         batch_size, c, h, w = probs.size(0), probs.size(1), probs.size(2), probs.size(3)
         probs = probs.view(batch_size, c, -1)
@@ -469,8 +471,8 @@ class HighResolutionNet(nn.Module):
             self.stage4_cfg, num_channels, multi_scale_output=True)
 
         last_inp_channels = np.int(np.sum(pre_stage_channels))
-        ocr_mid_channels = config.MODEL.OCR.MID_CHANNELS
-        ocr_key_channels = config.MODEL.OCR.KEY_CHANNELS
+        ocr_mid_channels = config.MODEL.OCR.MID_CHANNELS # 512
+        ocr_key_channels = config.MODEL.OCR.KEY_CHANNELS # 256
 
         self.conv3x3_ocr = nn.Sequential(
             nn.Conv2d(last_inp_channels, ocr_mid_channels,
@@ -633,9 +635,9 @@ class HighResolutionNet(nn.Module):
         out_aux_seg = []
 
         # ocr
-        out_aux = self.aux_head(feats)
+        out_aux = self.aux_head(feats) # こっちがcoarse object map. class_numのchannelのマップがoutされる
         # compute contrast feature
-        feats = self.conv3x3_ocr(feats)
+        feats = self.conv3x3_ocr(feats) # こっちが普通のinput feature? class_numのchannelに絞る前の、output featureで
 
         context = self.ocr_gather_head(feats, out_aux)
         feats = self.ocr_distri_head(feats, context)
