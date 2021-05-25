@@ -13,13 +13,19 @@ from models.hrnet_seg_ocr.config import config
 
 
 class CrossEntropy(nn.Module):
-    def __init__(self, ignore_label=-1, weight=None):
+    def __init__(self, ignore_label=-1, weight=None, use_ocr=False, w_loss=1., w_loss_ocr=0.4):
         super(CrossEntropy, self).__init__()
         self.ignore_label = ignore_label
         self.criterion = nn.CrossEntropyLoss(
             weight=weight,
             ignore_index=ignore_label
         )
+        self.use_ocr=use_ocr
+        if use_ocr:
+            self.weights = [w_loss_ocr, w_loss]
+        else:
+            self.weights = [w_loss]
+
 
     def _forward(self, score, target):
         ph, pw = score.size(2), score.size(3)
@@ -34,14 +40,17 @@ class CrossEntropy(nn.Module):
 
     def forward(self, score, target):
 
-        if config.MODEL.NUM_OUTPUTS == 1: # No OCR output.
+        #if config.MODEL.NUM_OUTPUTS == 1: # No OCR output.
+        #    score = [score]
+        if not self.use_ocr: # No OCR output.
             score = [score]
 
         # if NUM_OUTPUTS > 1, i.e. OCR outputs exists.
-        weights = config.LOSS.BALANCE_WEIGHTS # weight for loss : ocr loss
-        assert len(weights) == len(score)
+        #weights = config.LOSS.BALANCE_WEIGHTS # weight for loss : ocr loss
 
-        return sum([w * self._forward(x, target) for (w, x) in zip(weights, score)])
+        assert len(self.weights) == len(score)
+
+        return sum([w * self._forward(x, target) for (w, x) in zip(self.weights, score)])
 
 
 class OhemCrossEntropy(nn.Module):

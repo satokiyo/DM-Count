@@ -21,6 +21,14 @@ from datasets.segmentation_data import SegDataset
 from models.segmentation_model import SegModel
 
 from losses.cross_entropy import CrossEntropy, OhemCrossEntropy
+from losses.dice import DiceLoss
+from losses.focal import FocalLoss
+from losses.jaccard import JaccardLoss
+from losses.lovasz import LovaszLoss
+from losses.soft_ce import SoftCrossEntropyLoss
+from losses.wing import WingLoss
+from losses.combo import ComboLoss
+from losses.nrdice import NoiseRobustDiceLoss
 
 import neptune.new as neptune
 from neptune.new.types import File
@@ -33,6 +41,7 @@ class SegTrainer(object):
 
     def setup(self):
         args = self.args
+        use_ocr=False
 
         # device
         if torch.cuda.is_available():
@@ -48,11 +57,15 @@ class SegTrainer(object):
             from models.hrnet_seg_ocr.config import config, update_config
             update_config(config, args)
             self.config = config
+            if "ocr" in args.encoder_name:
+                use_ocr=True
      
             #self.model = seg_hrnet.get_seg_model(config)
             self.model = seg_hrnet_ocr.get_seg_model(config)
         else:
             self.model = SegModel(args)
+            if args.use_ocr:
+                use_ocr=True
     
             #from kiunet import kiunet, densekiunet, reskiunet
             #self.model = kiunet()
@@ -67,16 +80,183 @@ class SegTrainer(object):
         self.model.to(self.device)
 
         # criterion
-        self.criterion = CrossEntropy(ignore_label=-1,
-                                      weight=None).to(self.device)
-        #self.mse = nn.MSELoss().to(self.device)
-        #self.mae = nn.L1Loss().to(self.device)
+        # ce dice softce focal jaccard lovasz wing combo mae nrdice
+        if args.loss == 'ce':
+            self.criterion = CrossEntropy(ignore_label=-1,  # DiceLoss
+                                          weight=None).to(self.device)
+            if use_ocr:
+                self.criterion_ocr = CrossEntropy(ignore_label=-1,
+                                              weight=None,
+                                              use_ocr=use_ocr,
+                                              w_loss=1.,
+                                              w_loss_ocr=0.4).to(self.device)
 
-        ## Focal lossと類似。Top70%の勾配のみ使うことでonline hard example miningをする。若干Focalの方が良いらしい
-        #self.criterion = OhemCrossEntropy(ignore_label=-1,
-        #                                  thres=config.LOSS.OHEMTHRES,
-        #                                  min_kept=config.LOSS.OHEMKEEP,
-        #                                  weight=None).to(self.device)
+            ## Focal lossと類似。Top70%の勾配のみ使うことでonline hard example miningをする。若干Focalの方が良いらしい
+            #self.criterion = OhemCrossEntropy(ignore_label=-1,
+            #                                  thres=config.LOSS.OHEMTHRES,
+            #                                  min_kept=config.LOSS.OHEMKEEP,
+            #                                  weight=None).to(self.device)
+
+        elif args.loss == 'dice':
+            self.criterion = DiceLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               classes=None, # all channel contribute for loss
+                                               log_loss=False,
+                                               from_logits=True,
+                                               smooth=0.0,
+                                               ignore_index=None,).to(self.device)
+ 
+            if use_ocr:
+                self.criterion_ocr = DiceLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               classes=None, # all channel contribute for loss
+                                               log_loss=False,
+                                               from_logits=True,
+                                               smooth=0.0,
+                                               ignore_index=None,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+        elif args.loss == 'focal':
+            self.criterion = FocalLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               alpha = None, # alpha: Prior probability of having positive value in target.
+                                               gamma = 2., # gamma: Power factor for dampening weight (focal strength).
+                                               ignore_index=None,).to(self.device)
+ 
+ 
+            if use_ocr:
+                self.criterion_ocr = FocalLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               alpha = None, # alpha: Prior probability of having positive value in target.
+                                               gamma = 2., # gamma: Power factor for dampening weight (focal strength).
+                                               ignore_index=None,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+
+        elif args.loss == 'jaccard':
+            self.criterion = JaccardLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               classes=None, # all channel contribute for loss
+                                               log_loss=False,
+                                               from_logits=True,
+                                               smooth=0.0,).to(self.device)
+ 
+            if use_ocr:
+                self.criterion_ocr = JaccardLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               classes=None, # all channel contribute for loss
+                                               log_loss=False,
+                                               from_logits=True,
+                                               smooth=0.0,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+        elif args.loss == 'lovasz':
+            self.criterion = LovaszLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               per_image=False, #  If True loss computed per each image and then averaged, else computed per whole batch
+                                               from_logits=True,
+                                               ignore_index=None,).to(self.device)
+
+            if use_ocr:
+                self.criterion_ocr = LovaszLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               per_image=False, #  If True loss computed per each image and then averaged, else computed per whole batch
+                                               from_logits=True,
+                                               ignore_index=None,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+
+        elif args.loss == 'softce':
+            self.criterion = SoftCrossEntropyLoss(
+                                               reduction = "mean",
+                                               smooth_factor = 0.1,
+                                               ignore_index = -100,
+                                               dim = 1,).to(self.device)
+ 
+ 
+            if use_ocr:
+                self.criterion_ocr = SoftCrossEntropyLoss(
+                                               reduction = "mean",
+                                               smooth_factor = None,
+                                               ignore_index = -100,
+                                               dim = 1,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+
+        elif args.loss == 'wing':
+            self.criterion = WingLoss(
+                                               mode='multiclass',
+                                               reduction = "mean",
+                                               ignore_index = -100,
+                                               width = 5,
+                                               curvature = 0.5,).to(self.device)
+ 
+            if use_ocr:
+                self.criterion_ocr = WingLoss(
+                                               mode='multiclass',
+                                               reduction = "mean",
+                                               ignore_index = -100,
+                                               width = 5,
+                                               curvature = 0.5,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+
+        elif args.loss == 'combo':
+            self.criterion = ComboLoss(
+                                               loss_weight=1.0,
+                                               smooth=1,
+                                               alpha=0.5,
+                                               ce_ratio=0.5,
+                                               reduction='mean',
+                                               class_weight=None, 
+                                               use_sigmoid=True,).to(self.device)
+
+            if use_ocr:
+                self.criterion_ocr = ComboLoss(
+                                               loss_weight=1.0,
+                                               smooth=1,
+                                               alpha=0.5,
+                                               ce_ratio=0.5,
+                                               reduction='mean',
+                                               class_weight=None, 
+                                               use_sigmoid=True,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
+
+
+        elif args.loss == 'mae':
+            pass
+
+
+        elif args.loss == 'nrdice':
+            self.criterion = NoiseRobustDiceLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               classes=None, # all channel contribute for loss
+                                               log_loss=False,
+                                               from_logits=True,
+                                               smooth=0.0,
+                                               gamma=1.5,
+                                               ignore_index=None,).to(self.device)
+ 
+            if use_ocr:
+                self.criterion_ocr = NoiseRobustDiceLoss(
+                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
+                                               classes=None, # all channel contribute for loss
+                                               log_loss=False,
+                                               from_logits=True,
+                                               smooth=0.0,
+                                               gamma=1.5,
+                                               ignore_index=None,
+                                               use_ocr=use_ocr,
+                                               w_loss=1.,
+                                               w_loss_ocr=0.4).to(self.device)
 
 
         # optimizer
@@ -126,8 +306,9 @@ class SegTrainer(object):
 
         # save dir setting
         #sub_dir = 'encoder-{}_input-{}_wot-{}_wtv-{}_reg-{}_nIter-{}_normCood-{}'.format(
-        sub_dir = 'encoder-{}_input-{}_'.format(
-            args.encoder_name, args.crop_size)
+        sub_dir = 'encoder-{}_input-{}_downrate-{}_scale_pyramid_module-{}_attention_branch-{}_albumentation-{}_copy_paste-{}_deep_supervision-{}_ocr-{}'.format(
+            args.encoder_name, args.crop_size, args.downsample_ratio, args.scale_pyramid_module, args.use_attention_branch, args.use_albumentation, args.use_copy_paste, args.deep_supervision, args.use_ocr)
+
 
         save_dir_root = os.path.join('ckpts', sub_dir)
         if not os.path.exists(save_dir_root):
@@ -198,25 +379,39 @@ class SegTrainer(object):
             with torch.set_grad_enabled(True):
                 if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
                     outputs = self.model(inputs)
-                    _loss = self.criterion(outputs, masks)
+                    _loss = self.criterion_ocr(outputs, masks)
                     loss = _loss.mean()
 
                 elif self.args.deep_supervision:
-                    outputs, intermediates = self.model(inputs)
-                    _loss = self.criterion(outputs, masks)
-                    w_deep_sup = 0.4
-                    w_each = w_deep_sup / len(intermediates)
-                    deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
-                    loss = _loss + torch.stack(deep_sup_loss).sum()
+                    if self.args.use_ocr:
+                        outputs, intermediates, out_aux = self.model(inputs)
+                        _loss = self.criterion_ocr([out_aux, outputs], masks) # out_aux, out 順番注意
+                        w_deep_sup = 0.4
+                        w_each = w_deep_sup / len(intermediates)
+                        deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
+                        loss = _loss + torch.stack(deep_sup_loss).sum()
+
+                    else:
+                        outputs, intermediates = self.model(inputs)
+                        _loss = self.criterion(outputs, masks)
+                        w_deep_sup = 0.4
+                        w_each = w_deep_sup / len(intermediates)
+                        deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
+                        loss = _loss + torch.stack(deep_sup_loss).sum()
 
                 else:
-                    outputs = self.model(inputs)
-                    # Compute loss.
-                    _loss = self.criterion(outputs, masks)
-#                    mse = self.mse(outputs, masks)
-#                    mae = self.mae(outputs, masks)
-                    #pred_err = outputs - masks
-                    loss = _loss
+                    if self.args.use_ocr:
+                        outputs, out_aux = self.model(inputs)
+                        _loss = self.criterion_ocr([out_aux, outputs], masks) # out_aux, out 順番注意
+                        loss = _loss
+                    else:
+                        outputs = self.model(inputs)
+                        # Compute loss.
+                        _loss = self.criterion(outputs, masks)
+#                        mse = self.mse(outputs, masks)
+#                        mae = self.mae(outputs, masks)
+                        #pred_err = outputs - masks
+                        loss = _loss
                 epoch_loss.update(loss.item(), N)
                 #epoch_mse.update(torch.mean(pred_err * pred_err), N)
                 #epoch_mae.update(torch.mean(torch.abs(pred_err)), N)
@@ -301,13 +496,22 @@ class SegTrainer(object):
         epoch_loss = []
         #epoch_mse = []
         #epoch_mae = []
-        epoch_mIoU = []
-        epoch_IoU_class0 = []
-        epoch_IoU_class1 = []
-        epoch_IoU_class2 = []
-        epoch_IoU_class3 = []
+#        epoch_miou = []
+#        epoch_iou_class0 = []
+#        epoch_iou_class1 = []
+#        epoch_iou_class2 = []
+#        epoch_iou_class3 = []
         nums=1
-
+        epoch_iou_class = {f'{i}' : [] for i in range(self.args.classes)}
+        epoch_dice_class = {f'{i}' : [] for i in range(self.args.classes)}
+        epoch_recall_class = {f'{i}' : [] for i in range(self.args.classes)} 
+        epoch_precision_class = {f'{i}' : [] for i in range(self.args.classes)}
+        epoch_acc = []
+        epoch_miou = []
+        epoch_dice_macro = []
+        epoch_recall_macro = []
+        epoch_precision_macro = []
+ 
         stream = tqdm(self.dataloaders['val'])
         for step, (inputs, masks) in enumerate(stream):
             inputs = inputs.to(self.device)
@@ -318,20 +522,30 @@ class SegTrainer(object):
                     nums = self.config.MODEL.NUM_OUTPUTS
                     outputs = self.model(inputs)
 #                    _loss = self.criterion(outputs, masks)
-                    _loss = self.criterion(outputs, masks)
+                    _loss = self.criterion_ocr(outputs, masks)
                     loss = _loss.mean()
                 elif self.args.deep_supervision:
-                    outputs, _ = self.model(inputs)
-                    _loss = self.criterion(outputs, masks) # not calc deep supervision loss in validation
-                    loss = _loss
+                    if self.args.use_ocr:
+                        outputs, intermediates, out_aux = self.model(inputs)
+                        _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
+                        loss = _loss
+                    else:
+                        outputs, intermediates = self.model(inputs)
+                        _loss = self.criterion(outputs, masks)
+                        loss = _loss
                 else:
-                    outputs = self.model(inputs)
-                    # Compute loss.
-                    _loss = self.criterion(outputs, masks)
-#                    mse = self.mse(outputs, masks)
-#                    mae = self.mae(outputs, masks)
-                    #pred_err = outputs - masks
-                    loss = _loss
+                    if self.args.use_ocr:
+                        outputs, out_aux = self.model(inputs)
+                        _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
+                        loss = _loss
+                    else:
+                        outputs = self.model(inputs)
+                        # Compute loss.
+                        _loss = self.criterion(outputs, masks)
+#                        mse = self.mse(outputs, masks)
+#                        mae = self.mae(outputs, masks)
+                        #pred_err = outputs - masks
+                        loss = _loss
 
                 epoch_loss.append(loss.item())
                 # Compute MSE,MAE
@@ -359,27 +573,56 @@ class SegTrainer(object):
                         ignore=-1,
                     )
                 for i in range(nums):
-                    pos = confusion_matrix[..., i].sum(1)
-                    res = confusion_matrix[..., i].sum(0)
+                    pos = confusion_matrix[..., i].sum(1) # pred
+                    res = confusion_matrix[..., i].sum(0) # label
                     tp = np.diag(confusion_matrix[..., i])
-                    IoU_array = (tp / np.maximum(1.0, pos + res - tp))
-                    mean_IoU = IoU_array.mean()
-                    #print('{} {} {}'.format(i, IoU_array, mean_IoU))
-                epoch_IoU_class0.append(IoU_array[0])
-                epoch_IoU_class1.append(IoU_array[1])
-                epoch_IoU_class2.append(IoU_array[2])
-                epoch_IoU_class3.append(IoU_array[3])
-                epoch_mIoU.append(mean_IoU)
+                    fn = res - tp
+                    fp = pos - tp
+                    #iou_array = (tp / np.maximum(1.0, pos + res - tp)) # iou=tp/tp+fp+fn -> pos=pred=tp+fp, res-tp=fn
+                    iou_array = (tp / np.maximum(1.0, tp+fp+fn))
+                    recall_array = (tp / np.maximum(1.0, res)) 
+                    precision_array = (tp / np.maximum(1.0, pos)) 
+                    dice_array = tp / np.maximum(1.0, (tp + 0.5*(fp+fn)))
+                    mean_iou = iou_array.mean()
+                    recall_macro = recall_array.mean()
+                    precision_macro = precision_array.mean()
+                    dice_macro = dice_array.mean()
+                    acc = (tp / np.maximum(1.0, confusion_matrix.sum())).sum() 
+                    #print('{} {} {}'.format(i, iou_array, mean_iou))
+
+                for i in range(self.args.classes):
+                    epoch_iou_class[f'{i}'].append(iou_array[i])
+                    epoch_dice_class[f'{i}'].append(dice_array[i])
+                    epoch_recall_class[f'{i}'].append(recall_array[i])
+                    epoch_precision_class[f'{i}'].append(precision_array[i])
+
+#                epoch_iou_class0.append(iou_array[0])
+#                epoch_iou_class1.append(iou_array[1])
+#                epoch_iou_class2.append(iou_array[2])
+#                epoch_iou_class3.append(iou_array[3])
+#                epoch_miou.append(mean_iou)
+
+                epoch_acc.append(acc)
+                epoch_miou.append(mean_iou)
+                epoch_dice_macro.append(dice_macro)
+                epoch_recall_macro.append(recall_macro)
+                epoch_precision_macro.append(precision_macro)
 
             #stream.set_description('Epoch {} Val, Loss: {:.2f} MSE: {:.2f} MAE: {:.2f}'.format(self.epoch, loss, mse, mae))
-            stream.set_description('Epoch {} Val, Loss: {:.2f} IoU0: {:.2f} IoU1: {:.2f} IoU2: {:.2f} IoU3: {:.2f} mIoU: {:.2f}'
+            stream.set_description('Epoch {} Val, Loss: {:.2f} iou0: {:.2f} iou1: {:.2f} iou2: {:.2f} iou3: {:.2f} miou: {:.2f}'
                                           .format(self.epoch,
                                            np.mean(np.array(epoch_loss)),
-                                           np.mean(np.array(epoch_IoU_class0)),
-                                           np.mean(np.array(epoch_IoU_class1)),
-                                           np.mean(np.array(epoch_IoU_class2)),
-                                           np.mean(np.array(epoch_IoU_class3)),
-                                           np.mean(np.array(epoch_mIoU))))
+                                           np.mean(np.array(epoch_iou_class['0'])),
+                                           np.mean(np.array(epoch_iou_class['1'])),
+                                           np.mean(np.array(epoch_iou_class['2'])),
+                                           np.mean(np.array(epoch_iou_class['3'])),
+                                           np.mean(np.array(epoch_miou))))
+#                                           np.mean(np.array(epoch_loss)),
+#                                           np.mean(np.array(epoch_iou_class0)),
+#                                           np.mean(np.array(epoch_iou_class1)),
+#                                           np.mean(np.array(epoch_iou_class2)),
+#                                           np.mean(np.array(epoch_iou_class3)),
+#                                           np.mean(np.array(epoch_miou))))
 
             # show image
             if step % 20 == 0:
@@ -416,14 +659,14 @@ class SegTrainer(object):
                 ## neptune
                 #self.run['image_val'].upload(File.as_image(overlay.transpose(1,2,0)))
 
-        loss = np.mean(np.array(epoch_loss))
-        #mse = np.mean(np.array(epoch_mse))
-        #mae = np.mean(np.array(epoch_mae))
-        iou0 = np.mean(np.array(epoch_IoU_class0))
-        iou1 = np.mean(np.array(epoch_IoU_class1))
-        iou2 = np.mean(np.array(epoch_IoU_class2))
-        iou3 = np.mean(np.array(epoch_IoU_class3))
-        miou = np.mean(np.array(epoch_mIoU))
+#        loss = np.mean(np.array(epoch_loss))
+#        #mse = np.mean(np.array(epoch_mse))
+#        #mae = np.mean(np.array(epoch_mae))
+#        iou0 = np.mean(np.array(epoch_iou_class0))
+#        iou1 = np.mean(np.array(epoch_iou_class1))
+#        iou2 = np.mean(np.array(epoch_iou_class2))
+#        iou3 = np.mean(np.array(epoch_iou_class3))
+#        miou = np.mean(np.array(epoch_miou))
 
 
         model_state_dic = self.model.state_dict()
@@ -436,6 +679,7 @@ class SegTrainer(object):
         #    torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_{}.pth'.format(self.best_count)))
         #    self.best_count += 1
 
+        loss = np.mean(np.array(epoch_loss))
         if loss < self.best_loss:
             self.best_loss = loss
             self.logger.info("save best loss {:.2f} model epoch {}".format(self.best_loss, self.epoch))
@@ -450,14 +694,26 @@ class SegTrainer(object):
                                #terms_legends=['LOSS', 'MSE', 'MAE',])
         # Log validation losses to neptune
         self.run['val/Loss'].log(loss)
-        #self.run['val/MSE'].log(mse)
-        #self.run['val/MAE'].log(mae)
-        self.run['val/IoU0'].log(iou0)
-        self.run['val/IoU1'].log(iou1)
-        self.run['val/IoU2'].log(iou2)
-        self.run['val/IoU3'].log(iou3)
-        self.run['val/mIoU'].log(miou)
+#        #self.run['val/MSE'].log(mse)
+#        #self.run['val/MAE'].log(mae)
+#        self.run['val/iou0'].log(iou0)
+#        self.run['val/iou1'].log(iou1)
+#        self.run['val/iou2'].log(iou2)
+#        self.run['val/iou3'].log(iou3)
+#        self.run['val/miou'].log(miou)
 
+        for i in range(self.args.classes):
+            self.run[f'val/iou{i}'].log(np.mean(np.array(epoch_iou_class[f'{i}'])))
+            self.run[f'val/dice{i}'].log(np.mean(np.array(epoch_dice_class[f'{i}'])))
+            self.run[f'val/recall{i}'].log(np.mean(np.array(epoch_recall_class[f'{i}'])))
+            self.run[f'val/precision{i}'].log(np.mean(np.array(epoch_precision_class[f'{i}'])))
+
+        self.run['val/acc'].log(np.mean(np.array(epoch_acc)))
+        self.run['val/iou_macro'].log(np.mean(np.array(epoch_miou)))
+        self.run['val/dice_macro'].log(np.mean(np.array(epoch_dice_macro)))
+        self.run['val/recall_macro'].log(np.mean(np.array(epoch_recall_macro)))
+        self.run['val/precision_macro'].log(np.mean(np.array(epoch_precision_macro)))
+ 
 
     def data_check(self):
         import matplotlib.pyplot as plt

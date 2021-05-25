@@ -127,7 +127,10 @@ class UnetDecoder(nn.Module):
         # TO ADD
         self.blocks = nn.ModuleList(blocks)
         self.n_class=n_class
-        self.convs=[nn.Conv2d(och, self.n_class, 3, stride=1, padding=1).cuda() for och in ([head_channels] +  [o for o in out_channels])[::-1]]
+        _out_channels = [head_channels] +  [o for o in out_channels]
+        if downsample_ratio > 1:
+            _out_channels = _out_channels[:-i]
+        self.convs=[nn.Conv2d(och, self.n_class, 3, stride=1, padding=1).cuda() for och in _out_channels[::-1]]
         self.deep_supervision = deep_supervision
 
 
@@ -152,25 +155,20 @@ class UnetDecoder(nn.Module):
 
         if self.deep_supervision:
             # allocating deep supervision tensors
-            OUT_stack = []
+            intermediates = []
             # reverse indexing `X_decoder`, so smaller tensors have larger list indices 
-            out_stack_deep_sup = out_stack_deep_sup[::-1] # reverse
+            out_stack_deep_sup = out_stack_deep_sup[::-1] # reverse. (512*512*16ch ->...-> 16*16*512ch)
             # deep supervision outputs
-            for i in range(1, len(out_stack_deep_sup)):
+            for i in range(1, len(out_stack_deep_sup)): # (256*256*32ch ->...-> 16*16*512ch) !! Final resolution outputはdeep supervisionでは不要 !!
                 # 3-by-3 conv2d --> upsampling --> sigmoid output activation
                 pool_size = 2**(i)
                 hx = self.convs[i](out_stack_deep_sup[i])
                 hx = F.interpolate(hx, scale_factor=pool_size, mode="bilinear")
                 # collecting deep supervision tensors
-                OUT_stack.append(hx)
+                intermediates.append(hx)
             # no need final output
-            ## the final output (without extra upsampling)
-            ## 3-by-3 conv2d --> sigmoid output activation
-            #hx = self.convs[0](out_stack_deep_sup[0])
-            ## collecting final output tensors
-            #OUT_stack.append(hx)
 
-            return x, OUT_stack
+            return x, intermediates
 
         else:
             return x
