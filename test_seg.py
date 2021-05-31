@@ -30,6 +30,7 @@ parser.add_argument('--input-size', type=int, default=512)
 parser.add_argument('--cfg', type=str, default='')
 parser.add_argument('--activation', type=str,default=None)
 parser.add_argument('--deep_supervision', type=int,default=1)
+parser.add_argument('--use_ocr', type=int,default=0)
 parser.add_argument('opts',
                     help="Modify config options using the command-line",
                     default=None,
@@ -195,3 +196,103 @@ if args.test_type == 'val':
                      np.mean(np.array(epoch_IoU_class2)),
                      np.mean(np.array(epoch_IoU_class3)),
                      np.mean(np.array(epoch_mIoU))))
+
+
+if args.test_type in ['val_no_gt', 'test_no_gt']:
+    epoch_mIoU = []
+    epoch_IoU_class0 = []
+    epoch_IoU_class1 = []
+    epoch_IoU_class2 = []
+    epoch_IoU_class3 = []
+    nums=1
+    idx = 0
+    #for (inputs, masks) in tqdm(dataloader):
+    for (inputs) in tqdm(dataloader):
+        inputs = inputs.to(device)
+        assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
+#        masks  = masks.squeeze(1).to(device) # squeeze ch(1ch)
+        with torch.set_grad_enabled(False):
+            if "hrnet" in args.encoder_name and "ocr" in args.encoder_name: # with OCR output
+                nums = config.MODEL.NUM_OUTPUTS
+                outputs = model(inputs)
+            elif args.deep_supervision:
+                outputs, _ = model(inputs)
+            else:
+                outputs = model(inputs)
+
+            pred = outputs
+#            confusion_matrix = np.zeros((args.classes, args.classes, nums))
+            if not isinstance(pred, (list, tuple)):
+                pred = [pred]
+#            size = masks.size()
+#            for i, x in enumerate(pred):
+#                x = F.interpolate(
+#                    input=x, size=size[-2:],
+#                    mode='bilinear', align_corners=True,
+#                )
+#                confusion_matrix[..., i] += utils.get_confusion_matrix(
+#                    masks,
+#                    x,
+#                    size,
+#                    args.classes,
+#                    ignore=-1,
+#                )
+#            for i in range(nums):
+#                pos = confusion_matrix[..., i].sum(1)
+#                res = confusion_matrix[..., i].sum(0)
+#                tp = np.diag(confusion_matrix[..., i])
+#                IoU_array = (tp / np.maximum(1.0, pos + res - tp))
+#                mean_IoU = IoU_array.mean()
+#                #print('{} {} {}'.format(i, IoU_array, mean_IoU))
+#            epoch_IoU_class0.append(IoU_array[0])
+#            epoch_IoU_class1.append(IoU_array[1])
+#            epoch_IoU_class2.append(IoU_array[2])
+#            epoch_IoU_class3.append(IoU_array[3])
+#            epoch_mIoU.append(mean_IoU)
+
+            # save image
+            PALETTE = [
+                0,0,0,
+                0,255,0,
+                255,0,0,
+                0,0,255
+            ]
+            if "hrnet" in args.encoder_name and "ocr" in args.encoder_name: # with OCR output
+                outputs = outputs[1] # 0:ocr output/1:normal output
+            # show images to original size (1枚目の画像だけを表示する)
+            vis_img = outputs[0].detach().cpu().numpy()
+            # normalize density map values from 0 to 1, then map it to 0-255.
+            vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
+            vis_img = (vis_img*255).astype(np.uint8)
+            vis_map = np.argmax(vis_img, axis=0)
+            vis_map = Image.fromarray(vis_map.astype(np.uint8), mode="P")
+            vis_map.putpalette(PALETTE)
+            org_img = inputs[0].detach().cpu().numpy().transpose(1,2,0)
+            org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
+            org_img = (org_img*255).astype(np.uint8)
+            if (vis_map.size) != (org_img.shape[:1]):
+                vis_map = vis_map.resize(org_img.shape[:2])
+            vis_map = np.array(vis_map.convert("RGB"))
+ 
+            # overlay
+            overlay = np.uint8((org_img/2) + (vis_map/2))
+
+            cv2.imwrite(os.path.join(args.pred_density_map_path, str(idx) + '_mask.jpg'), vis_map[:,:,::-1])
+            cv2.imwrite(os.path.join(args.pred_density_map_path, str(idx) + '_orig.jpg'), org_img[:,:,::-1])
+            cv2.imwrite(os.path.join(args.pred_density_map_path, str(idx) + '_overlay.jpg'), overlay[:,:,::-1])
+
+            idx+=1
+
+#    iou0 = np.mean(np.array(epoch_IoU_class0))
+#    iou1 = np.mean(np.array(epoch_IoU_class1))
+#    iou2 = np.mean(np.array(epoch_IoU_class2))
+#    iou3 = np.mean(np.array(epoch_IoU_class3))
+#    miou = np.mean(np.array(epoch_mIoU))
+#    print('IoU0: {:.2f} IoU1: {:.2f} IoU2: {:.2f} IoU3: {:.2f} mIoU: {:.2f}'
+#             .format(np.mean(np.array(epoch_IoU_class0)),
+#                     np.mean(np.array(epoch_IoU_class1)),
+#                     np.mean(np.array(epoch_IoU_class2)),
+#                     np.mean(np.array(epoch_IoU_class3)),
+#                     np.mean(np.array(epoch_mIoU))))
+
+

@@ -334,32 +334,38 @@ def copy_paste_class(dataset_class):
         if not hasattr(self, 'post_transforms'):
             self._split_transforms()
 
-        imgs, masks = self.load_example(idx)
-        #pack outputs into a dict
-        img_data = {
-            'image': np.array(imgs),
-            'mask': np.array(masks),
-        }
-
-        if self.copy_paste is not None:
-            paste_idx = random.randint(0, self.__len__() - 1)
-#            paste_img_data = self.load_example(paste_idx)
-            paste_img, paste_mask = self.load_example(paste_idx)
-#            for k in list(paste_img_data.keys()):
-#                paste_img_data['paste_' + k] = paste_img_data[k]
-#                del paste_img_data[k]
-            paste_img_data = {
-                'paste_image': np.array(paste_img),
-                'paste_mask': np.array(paste_mask),
+        if self.method in ['train', 'val']:
+            imgs, masks = self.load_example(idx)
+            #pack outputs into a dict
+            img_data = {
+                'image': np.array(imgs),
+                'mask': np.array(masks),
             }
-            del paste_img, paste_mask
 
-            img_data = self.copy_paste(**img_data, **paste_img_data)
-            img_data = self.post_transforms(**img_data)
-            #img_data['paste_index'] = paste_idx
+            if self.copy_paste is not None:
+                paste_idx = random.randint(0, self.__len__() - 1)
+#                paste_img_data = self.load_example(paste_idx)
+                paste_img, paste_mask = self.load_example(paste_idx)
+#                for k in list(paste_img_data.keys()):
+#                    paste_img_data['paste_' + k] = paste_img_data[k]
+#                    del paste_img_data[k]
+                paste_img_data = {
+                    'paste_image': np.array(paste_img),
+                    'paste_mask': np.array(paste_mask),
+                }
+                del paste_img, paste_mask
 
-        #return img_data
-        return torch.as_tensor(img_data['image']), torch.as_tensor(img_data['mask'])
+                img_data = self.copy_paste(**img_data, **paste_img_data)
+                img_data = self.post_transforms(**img_data)
+                #img_data['paste_index'] = paste_idx
+
+            #return img_data
+            return torch.as_tensor(img_data['image']), torch.as_tensor(img_data['mask'])
+
+        elif self.method in ['val_no_gt', 'test_no_gt']:
+            imgs = self.load_example(idx)
+            #return img_data
+            return torch.as_tensor(np.array(imgs))
 
     setattr(dataset_class, '_split_transforms', _split_transforms)
     setattr(dataset_class, '__getitem__', __getitem__)

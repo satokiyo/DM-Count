@@ -101,6 +101,7 @@ class SegDataset(Base):
 #                                      A.Cutout(p=0.5),
                                    ])  
 #                                   keypoint_params=A.KeypointParams(format='xy'))
+            self.method = method
 
     def __len__(self):
         return len(self.im_list)
