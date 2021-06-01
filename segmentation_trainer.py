@@ -267,6 +267,7 @@ class SegTrainer(object):
         #T_0=35 #Number of iterations for the first restart.
         #T_mult=1 # A factor increases after a restart. Default: 1.
         eta_min=1e-5 #Minimum learning rate. Default: 0.
+        args.t_0 = int(args.max_epoch // 2)
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, eta_min)
 
         # dataset
