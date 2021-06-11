@@ -13,7 +13,7 @@ from models.hrnet_seg_ocr.config import config
 
 
 class CrossEntropy(nn.Module):
-    def __init__(self, ignore_label=-1, weight=None, use_ocr=False, w_loss=1., w_loss_ocr=0.4):
+    def __init__(self, ignore_label=-1, weight=None, use_ocr=False, w_loss=1., w_loss_ocr=0.1):
         super(CrossEntropy, self).__init__()
         self.ignore_label = ignore_label
         self.criterion = nn.CrossEntropyLoss(

@@ -199,8 +199,8 @@ class CopyPaste(A.DualTransform):
         #alpha = mask[0] > 0
         #for mask in masks[1:]:
         #    alpha += mask > 0
-        #alpha = np.where((mask == 2) | (mask == 3),1,0) # 現状、とりあえず cancer(idx color=2) or non-cancer-eptitherium(idx color=3) のみをペーストする
-        alpha = np.where((mask == 1) | (mask == 2) | (mask == 3),1,0) # 現状、とりあえず cancer(idx color=2) or non-cancer-eptitherium(idx color=3) のみをペーストする
+        #alpha = np.where((mask == 2) | (mask == 3),1,0) # 現状、とりあえず cancer(idx color=2) or 気管支線(idx color=3) のみをペーストする
+        alpha = np.where((mask == 1) | (mask == 2) | (mask == 3),1,0) # 背景以外をペーストする
 
         return {
             #"param_masks": params["masks"],

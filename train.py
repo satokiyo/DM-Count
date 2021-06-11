@@ -59,6 +59,13 @@ def parse_args():
     parser.add_argument('--use_ocr', type=int,default=0)
     parser.add_argument('--cfg', type=str,default="")
     parser.add_argument('--loss', type=str,default="ce") # dice softce focal jaccard lovasz wing combo mae nrdice
+    parser.add_argument('--use_ssl', type=int,default=0) 
+    parser.add_argument('--batch-size-ul', type=int, default=10) 
+    parser.add_argument('--unsupervised_w', type=int, default=30) 
+    parser.add_argument('--rampup_ends', type=float, default=0.4)
+    parser.add_argument('--data_dir_ul', help='data path', type=str, default='')
+
+
 
     parser.add_argument('opts',
                         help="Modify config options using the command-line",

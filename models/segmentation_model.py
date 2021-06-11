@@ -3,6 +3,7 @@ from models.unet import Unet
 from models.unetplusplus import UnetPlusPlus
 from models.deeplabv3 import DeepLabV3Plus
 from models.coplenet import COPLENet
+from itertools import chain
 
 
 class SegModel(nn.Module):
@@ -23,7 +24,9 @@ class SegModel(nn.Module):
             downsample_ratio=args.downsample_ratio, # add
             deep_supervision=args.deep_supervision, # add
             use_ocr=args.use_ocr, # add
+            use_ssl=args.use_ssl, # add
         )
+        self.use_ssl = args.use_ssl
 
 #        self.model = UnetPlusPlus( # MAnet UnetPlusPlus DeepLabV3Plus PSPnet
 #            encoder_name=args.encoder_name,
@@ -49,8 +52,15 @@ class SegModel(nn.Module):
  
 
 
-    def forward(self, input):
-        x = self.model(input)
+    def forward(self, input, unsupervised=False):
+        x = self.model(input, unsupervised=unsupervised)
         return x
 
 
+    def get_backbone_params(self):
+        return self.model.encoder.parameters()
+
+    def get_other_params(self):
+        if self.use_ssl:
+            return chain(self.model.decoder.parameters(), self.model.aux_decoders.parameters())
+        return self.model.decoder.parameters()

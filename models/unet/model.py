@@ -7,7 +7,9 @@ from models.hrnet.models.bn_helper import BatchNorm2d, BatchNorm2d_class, relu_i
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from models.CCT.decoders import VATDecoder, DropOutDecoder, CutOutDecoder, ContextMaskingDecoder, ObjectMaskingDecoder, FeatureDropDecoder, FeatureNoiseDecoder
 
+ 
 
 class Unet(SegmentationModel):
     """Unet_ is a fully convolution neural network for image semantic segmentation. Consist of *encoder* 
@@ -68,6 +70,7 @@ class Unet(SegmentationModel):
         downsample_ratio=1, # add
         deep_supervision=0, # add
         use_ocr=0, # add
+        use_ssl=0, # add
     ):
         super().__init__()
 
@@ -122,7 +125,7 @@ class Unet(SegmentationModel):
                                                      dropout=0.05,
                                                      )
     
-            self.aux_head = nn.Sequential(
+            self.ocr_head = nn.Sequential(
                 nn.Conv2d(last_inp_channels, last_inp_channels,
                           kernel_size=1, stride=1, padding=0),
                 BatchNorm2d(last_inp_channels),
@@ -150,75 +153,127 @@ class Unet(SegmentationModel):
 
         self.name = "u-{}".format(encoder_name)
         self.deep_supervision = deep_supervision
+        if use_ssl:
+            tmp = len(decoder_channels)
+            if downsample_ratio > 1:
+                ii = int(downsample_ratio / 2)
+                assert i in [1,2,3,4]
+                tmp = tmp - ii
+            upscale = 2**tmp
+            # The auxilary decoders
+            vat_decoder = [VATDecoder(upscale, self.encoder.out_channels[-1], classes, xi=1e-6,
+                                        eps=2.0) for _ in range(2)]
+            drop_decoder = [DropOutDecoder(upscale, self.encoder.out_channels[-1], classes,
+                                        drop_rate=0.5, spatial_dropout=True)
+                                        for _ in range(6)]
+            #cut_decoder = [CutOutDecoder(upscale, self.encoder.out_channels[-1], classes, erase=conf['erase'])
+            #                            for _ in range(conf['cutout'])]
+            #context_m_decoder = [ContextMaskingDecoder(upscale, self.encoder.out_channels[-1], classes)
+            #                            for _ in range(2)]
+            #object_masking = [ObjectMaskingDecoder(upscale, self.encoder.out_channels[-1], classes)
+            #                            for _ in range(2)]
+            feature_drop = [FeatureDropDecoder(upscale, self.encoder.out_channels[-1], classes)
+                                        for _ in range(6)]
+            feature_noise = [FeatureNoiseDecoder(upscale, self.encoder.out_channels[-1], classes,
+                                        uniform_range=0.3)
+                                        for _ in range(6)]
+
+            self.aux_decoders = nn.ModuleList([*vat_decoder, *drop_decoder, *feature_drop, *feature_noise])
+            #self.aux_decoders = nn.ModuleList([*vat_decoder, *drop_decoder, *context_m_decoder, *object_masking, *feature_drop, *feature_noise])
+
+ 
+        else:
+            self.aux_decoders = None
+
         self.initialize()
 
     # override
-    def forward(self, x):
+    def forward(self, x, unsupervised=False):
         """Sequentially pass `x` trough model`s encoder, decoder and heads"""
         features = self.encoder(x)
-        if self.deep_supervision:
-            decoder_output, intermediate_output = self.decoder(*features)
-
-            if self.use_ocr: # OCR
-                # ocr
-                out_aux = self.aux_head(decoder_output) # こっちがcoarse object map. class_numのchannelのマップがoutされる
-                # compute contrast feature
-                feats = self.conv3x3_ocr(decoder_output) # こっちが普通のinput feature? class_numのchannelに絞る前の、output featureで
-        
-                context = self.ocr_gather_head(feats, out_aux)
-                feats = self.ocr_distri_head(feats, context)
-        
-                #out = self.cls_head(feats)
-        
-                #out_aux_seg.append(out_aux)
-                #out_aux_seg.append(out)
-        
-                #return out_aux_seg
-                masks = self.segmentation_head(feats)
-
-                if self.classification_head is not None:
-                    labels = self.classification_head(features[-1])
-                    return masks, labels, intermediate_output, out_aux
-
-                return masks, intermediate_output, out_aux
-
+        if unsupervised:
+            # Get main prediction
+#            x_ul = self.encoder(x_ul)
+#            output_ul = self.main_decoder(x_ul)
+            if self.deep_supervision:
+                output_ul_main, _ = self.decoder(*features)
             else:
-                masks = self.segmentation_head(decoder_output)
+                output_ul_main = self.decoder(*features)
     
-            if self.classification_head is not None:
-                labels = self.classification_head(features[-1])
-                return masks, labels, intermediate_output
+            # Get auxiliary predictions
+            masks = self.segmentation_head(output_ul_main)
+
+            #outputs_ul_aux = self.aux_decoder(*features)
+            masks_aux = [aux_decoder(features[-1], masks.detach()) for aux_decoder in self.aux_decoders]
+
+            return masks, masks_aux
+
+#            loss_unsup = (loss_unsup / len(outputs_ul))
+
+        else: # supervised
+            if self.deep_supervision:
+                decoder_output, intermediate_output = self.decoder(*features)
     
-            return masks, intermediate_output
-
-        else:
-            decoder_output = self.decoder(*features)
-
-            if self.use_ocr: # OCR
-                # ocr
-                out_aux = self.aux_head(decoder_output) # こっちがcoarse object map. class_numのchannelのマップがoutされる
-                # compute contrast feature
-                feats = self.conv3x3_ocr(decoder_output) # こっちが普通のinput feature? class_numのchannelに絞る前の、output featureで
+                if self.use_ocr: # OCR
+                    # ocr
+                    out_aux = self.ocr_head(decoder_output) # こっちがcoarse object map. class_numのchannelのマップがoutされる
+                    # compute contrast feature
+                    feats = self.conv3x3_ocr(decoder_output) # こっちが普通のinput feature? class_numのchannelに絞る前の、output featureで
+            
+                    context = self.ocr_gather_head(feats, out_aux)
+                    feats = self.ocr_distri_head(feats, context)
+            
+                    #out = self.cls_head(feats)
+            
+                    #out_aux_seg.append(out_aux)
+                    #out_aux_seg.append(out)
+            
+                    #return out_aux_seg
+                    masks = self.segmentation_head(feats)
+    
+                    if self.classification_head is not None:
+                        labels = self.classification_head(features[-1])
+                        return masks, labels, intermediate_output, out_aux
+    
+                    return masks, intermediate_output, out_aux
+    
+                else:
+                    masks = self.segmentation_head(decoder_output)
         
-                context = self.ocr_gather_head(feats, out_aux)
-                feats = self.ocr_distri_head(feats, context)
-
-                masks = self.segmentation_head(feats)
-
                 if self.classification_head is not None:
                     labels = self.classification_head(features[-1])
-                    return masks, labels, out_aux
+                    return masks, labels, intermediate_output
 
-                return masks, out_aux
-
-            else:
-                masks = self.segmentation_head(decoder_output)
-
-                if self.classification_head is not None:
-                    labels = self.classification_head(features[-1])
-                    return masks, labels
+                return masks, intermediate_output
     
-                return masks
+            else:
+                decoder_output = self.decoder(*features)
+    
+                if self.use_ocr: # OCR
+                    # ocr
+                    out_aux = self.ocr_head(decoder_output) # こっちがcoarse object map. class_numのchannelのマップがoutされる
+                    # compute contrast feature
+                    feats = self.conv3x3_ocr(decoder_output) # こっちが普通のinput feature? class_numのchannelに絞る前の、output featureで
+            
+                    context = self.ocr_gather_head(feats, out_aux)
+                    feats = self.ocr_distri_head(feats, context)
+    
+                    masks = self.segmentation_head(feats)
+    
+                    if self.classification_head is not None:
+                        labels = self.classification_head(features[-1])
+                        return masks, labels, out_aux
+    
+                    return masks, out_aux
+    
+                else:
+                    masks = self.segmentation_head(decoder_output)
+    
+                    if self.classification_head is not None:
+                        labels = self.classification_head(features[-1])
+                        return masks, labels
+        
+                    return masks
 
     def predict(self, x):
         """Inference method. Switch model to `eval` mode, call `.forward(x)` with `torch.no_grad()`

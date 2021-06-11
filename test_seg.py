@@ -31,6 +31,7 @@ parser.add_argument('--cfg', type=str, default='')
 parser.add_argument('--activation', type=str,default=None)
 parser.add_argument('--deep_supervision', type=int,default=1)
 parser.add_argument('--use_ocr', type=int,default=0)
+parser.add_argument('--use_ssl', type=int, default=0)
 parser.add_argument('opts',
                     help="Modify config options using the command-line",
                     default=None,

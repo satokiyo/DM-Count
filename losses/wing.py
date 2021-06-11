@@ -21,7 +21,7 @@ class WingLoss(nn.Module):
         ignore_index: Optional[int] = None, 
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
 
         assert mode in {BINARY_MODE, MULTILABEL_MODE, MULTICLASS_MODE}

@@ -22,7 +22,7 @@ class DiceLoss(_Loss):
         eps: float = 1e-7,
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
         """Implementation of Dice loss for image segmentation task.
         It supports binary, multiclass and multilabel cases
@@ -49,7 +49,6 @@ class DiceLoss(_Loss):
         self.mode = mode
         if classes is not None:
             assert mode != BINARY_MODE, "Masking classes is not supported with mode=binary"
-            import pdb;pdb.set_trace()
             classes = to_tensor(classes, dtype=torch.long)
 
         self.classes = classes

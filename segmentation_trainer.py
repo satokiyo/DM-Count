@@ -29,11 +29,15 @@ from losses.soft_ce import SoftCrossEntropyLoss
 from losses.wing import WingLoss
 from losses.combo import ComboLoss
 from losses.nrdice import NoiseRobustDiceLoss
+from losses.losses import abCE_loss
+ 
 
 import neptune.new as neptune
 from neptune.new.types import File
 
 from PIL import Image
+from itertools import cycle
+import copy
 
 class SegTrainer(object):
     def __init__(self, args):
@@ -89,7 +93,7 @@ class SegTrainer(object):
                                               weight=None,
                                               use_ocr=use_ocr,
                                               w_loss=1.,
-                                              w_loss_ocr=0.4).to(self.device)
+                                              w_loss_ocr=0.1).to(self.device)
 
             ## Focal lossと類似。Top70%の勾配のみ使うことでonline hard example miningをする。若干Focalの方が良いらしい
             #self.criterion = OhemCrossEntropy(ignore_label=-1,
@@ -116,7 +120,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
         elif args.loss == 'focal':
             self.criterion = FocalLoss(
                                                mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
@@ -133,7 +137,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'jaccard':
             self.criterion = JaccardLoss(
@@ -152,7 +156,7 @@ class SegTrainer(object):
                                                smooth=0.0,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
         elif args.loss == 'lovasz':
             self.criterion = LovaszLoss(
                                                mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
@@ -168,7 +172,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'softce':
             self.criterion = SoftCrossEntropyLoss(
@@ -186,7 +190,7 @@ class SegTrainer(object):
                                                dim = 1,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'wing':
             self.criterion = WingLoss(
@@ -205,7 +209,7 @@ class SegTrainer(object):
                                                curvature = 0.5,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'combo':
             self.criterion = ComboLoss(
@@ -228,8 +232,9 @@ class SegTrainer(object):
                                                use_sigmoid=True,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
-
+                                               w_loss_ocr=0.1).to(self.device)
+        elif args.loss == 'abCE':
+            self.criterion = None # abCEロスはsemi-supervisedモードのsupervise lossのみで使用する。下で設定。
 
         elif args.loss == 'mae':
             pass
@@ -256,10 +261,51 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
+
+        if args.use_ssl:
+            from losses.losses import softmax_kl_loss, softmax_mse_loss, softmax_js_loss, consistency_weight
+            if args.dataset.lower() == 'segmentation':
+                self.dataset_ul = SegDataset(args.data_dir_ul,
+                                             root_path_ano=None,
+                                             crop_size=args.crop_size,
+                                             downsample_ratio=args.downsample_ratio,
+                                             method='test_no_gt')
+            else:
+                raise NotImplementedError
+
+            self.dataloader_ul = DataLoader(self.dataset_ul,
+                                              collate_fn=default_collate,
+                                              batch_size=args.batch_size_ul,
+                                              shuffle=True,
+                                              num_workers=args.num_workers * self.device_count,
+                                              pin_memory=True)
+
+            # Supervised and unsupervised losses
+            #self.unsuper_loss = softmax_kl_loss
+            self.unsuper_loss = softmax_mse_loss
+            #self.unsuper_loss = softmax_js_loss
+            #rampup_ends = int(config['ramp_up'] * config['trainer']['epochs'])
+            rampup_ends = int(args.max_epoch * args.rampup_ends)
+            iters_per_epoch = int(len(self.dataloader_ul) // args.batch_size_ul)
+            cons_w_unsup = consistency_weight(final_w=args.unsupervised_w, iters_per_epoch=iters_per_epoch ,
+                                                rampup_ends=rampup_ends)
+            self.unsup_loss_w = cons_w_unsup
+            if args.loss == 'abCE' and self.criterion is None:
+                self.criterion = abCE_loss(iters_per_epoch=iters_per_epoch, epochs=args.max_epoch, num_classes=args.classes).to(self.device)
+                if use_ocr:
+                    self.criterion_ocr = CrossEntropy(ignore_label=-1,
+                                              weight=None,
+                                              use_ocr=use_ocr,
+                                              w_loss=1.,
+                                              w_loss_ocr=0.1).to(self.device)
 
         # optimizer
+#        trainable_params = [{'params': filter(lambda p:p.requires_grad, self.model.get_other_params())},
+#                            {'params': filter(lambda p:p.requires_grad, self.model.get_backbone_params()), 'lr': args.lr / 10}]
+#
+#        self.optimizer = optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         #self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr)
 
@@ -267,18 +313,17 @@ class SegTrainer(object):
         #T_0=35 #Number of iterations for the first restart.
         #T_mult=1 # A factor increases after a restart. Default: 1.
         eta_min=1e-5 #Minimum learning rate. Default: 0.
-        args.t_0 = int(args.max_epoch // 2)
+        args.t_0 = int(args.max_epoch)
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, eta_min)
 
         # dataset
-        downsample_ratio = args.downsample_ratio # for U-Net like architecture
         if args.dataset.lower() == 'segmentation':
             self.datasets = {'train': SegDataset(os.path.join(args.data_dir, 'images', 'training'),
                                                  os.path.join(args.data_dir, 'annotations', 'training'),
-                                                 args.crop_size, downsample_ratio, 'train', use_albumentation=args.use_albumentation, use_copy_paste=args.use_copy_paste),
+                                                 args.crop_size, args.downsample_ratio, 'train', use_albumentation=args.use_albumentation, use_copy_paste=args.use_copy_paste),
                              'val': SegDataset(os.path.join(args.data_dir, 'images', 'validation'),
                                                os.path.join(args.data_dir, 'annotations', 'validation'),
-                                               args.crop_size, downsample_ratio, 'val'),
+                                               args.crop_size, args.downsample_ratio, 'val'),
                              }
         else:
             raise NotImplementedError
@@ -358,6 +403,8 @@ class SegTrainer(object):
     def train(self):
         """training process"""
         args = self.args
+        self.prev_model = copy.deepcopy(self.model)
+        self.prev_optimizer = copy.deepcopy(self.optimizer)
         for epoch in range(self.start_epoch, args.max_epoch + 1):
             #self.logger.info('-' * 5 + 'Epoch {}/{}'.format(epoch, args.max_epoch) + '-' * 5)
             self.epoch = epoch
@@ -371,9 +418,26 @@ class SegTrainer(object):
         epoch_mse = AverageMeter()
         epoch_start = time.time()
         self.model.train()  # Set model to training mode
-        iters = len(self.dataloaders['train'])
-        stream = tqdm(self.dataloaders['train'])
-        for step, (inputs, masks) in enumerate(stream):
+#        iters = len(self.dataloaders['train'])
+#        stream = tqdm(self.dataloaders['train'])
+
+        if self.args.use_ssl:
+            iters = len(self.dataloader_ul)
+            stream = tqdm(zip(cycle(self.dataloaders['train']), self.dataloader_ul), total=iters)
+            #stream = tqdm(range(len(self.dataloader_ul)), ncols=135)
+            #dataloader = iter(zip(cycle(self.dataloaders['train']), self.dataloader_ul))
+        else:
+            iters = len(self.dataloaders['train'])
+            stream = tqdm(zip(self.dataloaders['train'], cycle(self.dataloader_ul)), total=iters)
+            #stream = tqdm(range(len(self.dataloaders['train'])), ncols=135)
+            #dataloader = iter(zip(self.dataloaders['train'], cycle(self.dataloader_ul)))
+#        for step, (inputs, masks) in enumerate(stream):
+#        for step in tbar:
+#                (x_l,x_ul) = next(dataloader)
+        for step, (x_l, x_ul) in enumerate(stream):
+            inputs, masks = x_l
+            if self.args.use_ssl:
+                x_ul = x_ul.to(self.device)
             inputs = inputs.to(self.device)
             masks  = masks.squeeze(1).to(self.device) # squeeze ch(1ch)
             N = inputs.size(0)
@@ -385,8 +449,8 @@ class SegTrainer(object):
 
                 elif self.args.deep_supervision:
                     if self.args.use_ocr:
-                        outputs, intermediates, out_aux = self.model(inputs)
-                        _loss = self.criterion_ocr([out_aux, outputs], masks) # out_aux, out 順番注意
+                        outputs, intermediates, out_ocr = self.model(inputs)
+                        _loss = self.criterion_ocr([out_ocr, outputs], masks) # out_ocr, out 順番注意
                         w_deep_sup = 0.4
                         w_each = w_deep_sup / len(intermediates)
                         deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
@@ -394,32 +458,62 @@ class SegTrainer(object):
 
                     else:
                         outputs, intermediates = self.model(inputs)
-                        _loss = self.criterion(outputs, masks)
+                        if self.args.loss == "abCE":
+                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
+                        else:
+                            _loss = self.criterion(outputs, masks)
                         w_deep_sup = 0.4
                         w_each = w_deep_sup / len(intermediates)
-                        deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
+                        if self.args.loss == "abCE":
+                            deep_sup_loss = [w_each*self.criterion(out, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch) for out in intermediates]
+                        else:
+                            deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
+                        del intermediates
                         loss = _loss + torch.stack(deep_sup_loss).sum()
+                        del _loss, deep_sup_loss
+
+                        if self.args.use_ssl: # semi-supervised
+                            output_ul_main, outputs_ul_aux = self.model(x_ul, unsupervised=True)
+                            targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
+                            loss_unsup = []
+                            for aux_out in outputs_ul_aux: # aux decoder outputs
+                                loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=False))
+                            del output_ul_main, outputs_ul_aux
+                            # Compute the unsupervised loss
+                            loss_unsup = sum(loss_unsup) / len(loss_unsup)
+                            weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)
+                            loss_unsup = loss_unsup * weight_u
+                            
+                            loss = loss + loss_unsup
+                            del loss_unsup
 
                 else:
                     if self.args.use_ocr:
-                        outputs, out_aux = self.model(inputs)
-                        _loss = self.criterion_ocr([out_aux, outputs], masks) # out_aux, out 順番注意
+                        outputs, out_ocr = self.model(inputs)
+                        _loss = self.criterion_ocr([out_ocr, outputs], masks) # out_ocr, out 順番注意
                         loss = _loss
                     else:
                         outputs = self.model(inputs)
                         # Compute loss.
-                        _loss = self.criterion(outputs, masks)
-#                        mse = self.mse(outputs, masks)
-#                        mae = self.mae(outputs, masks)
-                        #pred_err = outputs - masks
+                        if self.args.loss == "abCE":
+                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
+                        else:
+                            _loss = self.criterion(outputs, masks)
                         loss = _loss
-                epoch_loss.update(loss.item(), N)
-                #epoch_mse.update(torch.mean(pred_err * pred_err), N)
-                #epoch_mae.update(torch.mean(torch.abs(pred_err)), N)
 
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+                epoch_loss.update(loss.item(), N)
+
+                if torch.isnan(loss):
+                    self.model = self.prev_model
+                    self.optimizer.load_state_dict(self.prev_optimizer.state_dict())
+                else:
+                    self.prev_model = copy.deepcopy(self.model)
+                    self.prev_optimizer = copy.deepcopy(self.optimizer)
+
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+
                 self.scheduler.step(self.epoch + step / iters)
 
             stream.set_description(
@@ -427,43 +521,45 @@ class SegTrainer(object):
                     .format(self.epoch, epoch_loss.get_avg()))
                 #'Epoch {} Train, Loss: {:.2f}, MSE: {:.2f} MAE: {:.2f}'
                 #    .format(self.epoch, epoch_loss.get_avg(), torch.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg()))
+            del loss
  
             # show image
             if step % 20 == 0:
-                # show images to original size (1枚目の画像だけを表示する)
-                PALETTE = [
-                    0,0,0,
-                    0,255,0,
-                    255,0,0,
-                    0,0,255
-                ]
-                if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
-                    outputs = outputs[1] # 0:ocr output/1:normal output
-                # show images to original size (1枚目の画像だけを表示する)
-                vis_img = outputs[0].detach().cpu().numpy()
-                # normalize density map values from 0 to 1, then map it to 0-255.
-                vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
-                vis_img = (vis_img*255).astype(np.uint8)
-                vis_map = np.argmax(vis_img, axis=0)
-                vis_map = Image.fromarray(vis_map.astype(np.uint8), mode="P")
-                vis_map.putpalette(PALETTE)
-#                vis_map = vis_map.transpose(1,2,0)
-#                vis_img = cv2.resize(vis_img, dsize=(int(self.args.input_size), int(self.args.input_size)), interpolation=cv2.INTER_NEAREST)
-                org_img = inputs[0].detach().cpu().numpy().transpose(1,2,0)
-                org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
-                org_img = (org_img*255).astype(np.uint8)
-                if (vis_map.size) != (org_img.shape[:1]):
-                    vis_map = vis_map.resize(org_img.shape[:2])
-                vis_map = np.array(vis_map.convert("RGB"))
-                # overlay
-                #overlay = ((org_img/4) + (vis_map/1.5))
-                overlay = np.uint8((org_img/2) + (vis_map/2)).transpose(2,0,1)
-                # visdom
-                self.vlog.image(imgs=[overlay],
-                          titles=['(Training) Image overlay'],
-                          window_ids=[1])
-                ## neptune
-                #self.run['image_train'].upload(File.as_image(overlay.astype(np.uint8)))
+               with torch.set_grad_enabled(False):
+                    # show images to original size (1枚目の画像だけを表示する)
+                    PALETTE = [
+                        0,0,0,
+                        0,255,0,
+                        255,0,0,
+                        0,0,255
+                    ]
+                    if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
+                        outputs = outputs[1] # 0:ocr output/1:normal output
+                    # show images to original size (1枚目の画像だけを表示する)
+                    vis_img = outputs[0].detach().cpu().numpy()
+                    # normalize density map values from 0 to 1, then map it to 0-255.
+                    vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
+                    vis_img = (vis_img*255).astype(np.uint8)
+                    vis_map = np.argmax(vis_img, axis=0)
+                    vis_map = Image.fromarray(vis_map.astype(np.uint8), mode="P")
+                    vis_map.putpalette(PALETTE)
+    #                vis_map = vis_map.transpose(1,2,0)
+    #                vis_img = cv2.resize(vis_img, dsize=(int(self.args.input_size), int(self.args.input_size)), interpolation=cv2.INTER_NEAREST)
+                    org_img = inputs[0].detach().cpu().numpy().transpose(1,2,0)
+                    org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
+                    org_img = (org_img*255).astype(np.uint8)
+                    if (vis_map.size) != (org_img.shape[:1]):
+                        vis_map = vis_map.resize(org_img.shape[:2])
+                    vis_map = np.array(vis_map.convert("RGB"))
+                    # overlay
+                    #overlay = ((org_img/4) + (vis_map/1.5))
+                    overlay = np.uint8((org_img/2) + (vis_map/2)).transpose(2,0,1)
+                    # visdom
+                    self.vlog.image(imgs=[overlay],
+                              titles=['(Training) Image overlay'],
+                              window_ids=[1])
+                    ## neptune
+                    #self.run['image_train'].upload(File.as_image(overlay.astype(np.uint8)))
 
 
         model_state_dic = self.model.state_dict()
@@ -527,22 +623,28 @@ class SegTrainer(object):
                     loss = _loss.mean()
                 elif self.args.deep_supervision:
                     if self.args.use_ocr:
-                        outputs, intermediates, out_aux = self.model(inputs)
+                        outputs, intermediates, out_ocr = self.model(inputs)
                         _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
                         loss = _loss
                     else:
                         outputs, intermediates = self.model(inputs)
-                        _loss = self.criterion(outputs, masks)
+                        if self.args.loss == "abCE":
+                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
+                        else:
+                            _loss = self.criterion(outputs, masks)
                         loss = _loss
                 else:
                     if self.args.use_ocr:
-                        outputs, out_aux = self.model(inputs)
+                        outputs, out_ocr = self.model(inputs)
                         _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
                         loss = _loss
                     else:
                         outputs = self.model(inputs)
                         # Compute loss.
-                        _loss = self.criterion(outputs, masks)
+                        if self.args.loss == "abCE":
+                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
+                        else:
+                            _loss = self.criterion(outputs, masks)
 #                        mse = self.mse(outputs, masks)
 #                        mae = self.mae(outputs, masks)
                         #pred_err = outputs - masks
@@ -609,65 +711,65 @@ class SegTrainer(object):
                 epoch_recall_macro.append(recall_macro)
                 epoch_precision_macro.append(precision_macro)
 
-            #stream.set_description('Epoch {} Val, Loss: {:.2f} MSE: {:.2f} MAE: {:.2f}'.format(self.epoch, loss, mse, mae))
-            stream.set_description('Epoch {} Val, Loss: {:.2f} iou0: {:.2f} iou1: {:.2f} iou2: {:.2f} iou3: {:.2f} miou: {:.2f}'
-                                          .format(self.epoch,
-                                           np.mean(np.array(epoch_loss)),
-                                           np.mean(np.array(epoch_iou_class['0'])),
-                                           np.mean(np.array(epoch_iou_class['1'])),
-                                           np.mean(np.array(epoch_iou_class['2'])),
-                                           np.mean(np.array(epoch_iou_class['3'])),
-                                           np.mean(np.array(epoch_miou))))
-#                                           np.mean(np.array(epoch_loss)),
-#                                           np.mean(np.array(epoch_iou_class0)),
-#                                           np.mean(np.array(epoch_iou_class1)),
-#                                           np.mean(np.array(epoch_iou_class2)),
-#                                           np.mean(np.array(epoch_iou_class3)),
-#                                           np.mean(np.array(epoch_miou))))
-
-            # show image
-            if step % 20 == 0:
-                PALETTE = [
-                    0,0,0,
-                    0,255,0,
-                    255,0,0,
-                    0,0,255
-                ]
-                if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
-                    outputs = outputs[1] # 0:ocr output/1:normal output
-                # show images to original size (1枚目の画像だけを表示する)
-                vis_img = outputs[0].detach().cpu().numpy()
-                # normalize density map values from 0 to 1, then map it to 0-255.
-                vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
-                vis_img = (vis_img*255).astype(np.uint8)
-                vis_map = np.argmax(vis_img, axis=0)
-                vis_map = Image.fromarray(vis_map.astype(np.uint8), mode="P")
-                vis_map.putpalette(PALETTE)
-                org_img = inputs[0].detach().cpu().numpy().transpose(1,2,0)
-                org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
-                org_img = (org_img*255).astype(np.uint8)
-                if (vis_map.size) != (org_img.shape[:1]):
-                    vis_map = vis_map.resize(org_img.shape[:2])
-                vis_map = np.array(vis_map.convert("RGB"))
- 
-                # overlay
-                overlay = np.uint8((org_img/2) + (vis_map/2)).transpose(2,0,1)
-
-                # visdom
-                self.vlog.image(imgs=[overlay],
-                          titles=['(Validation) Image w/ output heatmap and labeled points'],
-                          window_ids=[2])
-                ## neptune
-                #self.run['image_val'].upload(File.as_image(overlay.transpose(1,2,0)))
-
-#        loss = np.mean(np.array(epoch_loss))
-#        #mse = np.mean(np.array(epoch_mse))
-#        #mae = np.mean(np.array(epoch_mae))
-#        iou0 = np.mean(np.array(epoch_iou_class0))
-#        iou1 = np.mean(np.array(epoch_iou_class1))
-#        iou2 = np.mean(np.array(epoch_iou_class2))
-#        iou3 = np.mean(np.array(epoch_iou_class3))
-#        miou = np.mean(np.array(epoch_miou))
+                #stream.set_description('Epoch {} Val, Loss: {:.2f} MSE: {:.2f} MAE: {:.2f}'.format(self.epoch, loss, mse, mae))
+                stream.set_description('Epoch {} Val, Loss: {:.2f} iou0: {:.2f} iou1: {:.2f} iou2: {:.2f} iou3: {:.2f} miou: {:.2f}'
+                                              .format(self.epoch,
+                                               np.mean(np.array(epoch_loss)),
+                                               np.mean(np.array(epoch_iou_class['0'])),
+                                               np.mean(np.array(epoch_iou_class['1'])),
+                                               np.mean(np.array(epoch_iou_class['2'])),
+                                               np.mean(np.array(epoch_iou_class['3'])),
+                                               np.mean(np.array(epoch_miou))))
+    #                                           np.mean(np.array(epoch_loss)),
+    #                                           np.mean(np.array(epoch_iou_class0)),
+    #                                           np.mean(np.array(epoch_iou_class1)),
+    #                                           np.mean(np.array(epoch_iou_class2)),
+    #                                           np.mean(np.array(epoch_iou_class3)),
+    #                                           np.mean(np.array(epoch_miou))))
+    
+                # show image
+                if step % 20 == 0:
+                    PALETTE = [
+                        0,0,0,
+                        0,255,0,
+                        255,0,0,
+                        0,0,255
+                    ]
+                    if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
+                        outputs = outputs[1] # 0:ocr output/1:normal output
+                    # show images to original size (1枚目の画像だけを表示する)
+                    vis_img = outputs[0].detach().cpu().numpy()
+                    # normalize density map values from 0 to 1, then map it to 0-255.
+                    vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
+                    vis_img = (vis_img*255).astype(np.uint8)
+                    vis_map = np.argmax(vis_img, axis=0)
+                    vis_map = Image.fromarray(vis_map.astype(np.uint8), mode="P")
+                    vis_map.putpalette(PALETTE)
+                    org_img = inputs[0].detach().cpu().numpy().transpose(1,2,0)
+                    org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
+                    org_img = (org_img*255).astype(np.uint8)
+                    if (vis_map.size) != (org_img.shape[:1]):
+                        vis_map = vis_map.resize(org_img.shape[:2])
+                    vis_map = np.array(vis_map.convert("RGB"))
+     
+                    # overlay
+                    overlay = np.uint8((org_img/2) + (vis_map/2)).transpose(2,0,1)
+    
+                    # visdom
+                    self.vlog.image(imgs=[overlay],
+                              titles=['(Validation) Image w/ output heatmap and labeled points'],
+                              window_ids=[2])
+                    ## neptune
+                    #self.run['image_val'].upload(File.as_image(overlay.transpose(1,2,0)))
+    
+    #        loss = np.mean(np.array(epoch_loss))
+    #        #mse = np.mean(np.array(epoch_mse))
+    #        #mae = np.mean(np.array(epoch_mae))
+    #        iou0 = np.mean(np.array(epoch_iou_class0))
+    #        iou1 = np.mean(np.array(epoch_iou_class1))
+    #        iou2 = np.mean(np.array(epoch_iou_class2))
+    #        iou3 = np.mean(np.array(epoch_iou_class3))
+    #        miou = np.mean(np.array(epoch_miou))
 
 
         model_state_dic = self.model.state_dict()
