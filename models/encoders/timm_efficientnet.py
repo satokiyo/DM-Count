@@ -1,11 +1,28 @@
 import torch
 import torch.nn as nn
 
-from timm.models.efficientnet import EfficientNet
-from timm.models.efficientnet import decode_arch_def, round_channels, default_cfgs
-from timm.models.layers.activations import Swish
+from .timm.models.efficientnet import EfficientNet
+from .timm.models.efficientnet import decode_arch_def, round_channels, default_cfgs
+from .timm.models.layers.activations import Swish
+from functools import partial
+from models.encoders.timm.models.layers import get_act_layer #,CondConv2d, get_condconv_initializer, get_act_layer, get_attn, make_divisible
 
 from ._base import EncoderMixin
+
+
+def resolve_bn_args(kwargs):
+    bn_args = get_bn_args_tf() if kwargs.pop('bn_tf', False) else {}
+    bn_momentum = kwargs.pop('bn_momentum', None)
+    if bn_momentum is not None:
+        bn_args['momentum'] = bn_momentum
+    bn_eps = kwargs.pop('bn_eps', None)
+    if bn_eps is not None:
+        bn_args['eps'] = bn_eps
+    return bn_args
+
+
+def resolve_act_layer(kwargs, default='relu'):
+    return get_act_layer(kwargs.pop('act_layer', default))
 
 
 def get_efficientnet_kwargs(channel_multiplier=1.0, depth_multiplier=1.0, drop_rate=0.2):
@@ -89,6 +106,111 @@ def gen_efficientnet_lite_kwargs(channel_multiplier=1.0, depth_multiplier=1.0, d
     )
     return model_kwargs
 
+def _gen_efficientnetv2_s(
+        variant, channel_multiplier=1.0, depth_multiplier=1.0, rw=False, pretrained=False, **kwargs):
+    """ Creates an EfficientNet-V2 Small model
+
+    Ref impl: https://github.com/google/automl/tree/master/efficientnetv2
+    Paper: `EfficientNetV2: Smaller Models and Faster Training` - https://arxiv.org/abs/2104.00298
+
+    NOTE: `rw` flag sets up 'small' variant to behave like my initial v2 small model,
+        before ref the impl was released.
+    """
+    arch_def = [
+        ['cn_r2_k3_s1_e1_c24_skip'],
+        ['er_r4_k3_s2_e4_c48'],
+        ['er_r4_k3_s2_e4_c64'],
+        ['ir_r6_k3_s2_e4_c128_se0.25'],
+        ['ir_r9_k3_s1_e6_c160_se0.25'],
+        ['ir_r15_k3_s2_e6_c256_se0.25'],
+    ]
+    num_features = 1280
+    if rw:
+        # my original variant, based on paper figure differs from the official release
+        arch_def[0] = ['er_r2_k3_s1_e1_c24']
+        arch_def[-1] = ['ir_r15_k3_s2_e6_c272_se0.25']
+        num_features = 1792
+
+    round_chs_fn = partial(round_channels, multiplier=channel_multiplier)
+    model_kwargs = dict(
+        block_args=decode_arch_def(arch_def, depth_multiplier),
+        num_features=round_chs_fn(num_features),
+        stem_size=24,
+        round_chs_fn=round_chs_fn,
+        norm_layer=partial(nn.BatchNorm2d, **resolve_bn_args(kwargs)),
+        act_layer=resolve_act_layer(kwargs, 'silu'),
+        **kwargs,
+    )
+#    model = _create_effnet(variant, pretrained, **model_kwargs)
+#    return model
+    return model_kwargs
+
+
+def _gen_efficientnetv2_m(variant, channel_multiplier=1.0, depth_multiplier=1.0, pretrained=False, **kwargs):
+    """ Creates an EfficientNet-V2 Medium model
+
+    Ref impl: https://github.com/google/automl/tree/master/efficientnetv2
+    Paper: `EfficientNetV2: Smaller Models and Faster Training` - https://arxiv.org/abs/2104.00298
+    """
+
+    arch_def = [
+        ['cn_r3_k3_s1_e1_c24_skip'],
+        ['er_r5_k3_s2_e4_c48'],
+        ['er_r5_k3_s2_e4_c80'],
+        ['ir_r7_k3_s2_e4_c160_se0.25'],
+        ['ir_r14_k3_s1_e6_c176_se0.25'],
+        ['ir_r18_k3_s2_e6_c304_se0.25'],
+        ['ir_r5_k3_s1_e6_c512_se0.25'],
+    ]
+
+    model_kwargs = dict(
+        block_args=decode_arch_def(arch_def, depth_multiplier),
+        num_features=1280,
+        stem_size=24,
+        round_chs_fn=partial(round_channels, multiplier=channel_multiplier),
+        norm_layer=partial(nn.BatchNorm2d, **resolve_bn_args(kwargs)),
+        act_layer=resolve_act_layer(kwargs, 'silu'),
+        **kwargs,
+    )
+#    model = _create_effnet(variant, pretrained, **model_kwargs)
+#    return model
+    return model_kwargs
+
+
+def _gen_efficientnetv2_l(variant, channel_multiplier=1.0, depth_multiplier=1.0, pretrained=False, **kwargs):
+    """ Creates an EfficientNet-V2 Large model
+
+    Ref impl: https://github.com/google/automl/tree/master/efficientnetv2
+    Paper: `EfficientNetV2: Smaller Models and Faster Training` - https://arxiv.org/abs/2104.00298
+    """
+
+    arch_def = [
+        ['cn_r4_k3_s1_e1_c32_skip'],
+        ['er_r7_k3_s2_e4_c64'],
+        ['er_r7_k3_s2_e4_c96'],
+        ['ir_r10_k3_s2_e4_c192_se0.25'],
+        ['ir_r19_k3_s1_e6_c224_se0.25'],
+        ['ir_r25_k3_s2_e6_c384_se0.25'],
+        ['ir_r7_k3_s1_e6_c640_se0.25'],
+    ]
+
+    model_kwargs = dict(
+        block_args=decode_arch_def(arch_def, depth_multiplier),
+        num_features=1280,
+        stem_size=32,
+        round_chs_fn=partial(round_channels, multiplier=channel_multiplier),
+        norm_layer=partial(nn.BatchNorm2d, **resolve_bn_args(kwargs)),
+        act_layer=resolve_act_layer(kwargs, 'silu'),
+        **kwargs,
+    )
+#    model = _create_effnet(variant, pretrained, **model_kwargs)
+#    return model
+    return model_kwargs
+
+
+
+
+
 class EfficientNetBaseEncoder(EfficientNet, EncoderMixin):
 
     def __init__(self, stage_idxs, out_channels, depth=5, **kwargs):
@@ -140,6 +262,21 @@ class EfficientNetLiteEncoder(EfficientNetBaseEncoder):
         kwargs = gen_efficientnet_lite_kwargs(channel_multiplier, depth_multiplier, drop_rate)
         super().__init__(stage_idxs, out_channels, depth, **kwargs)
 
+
+class EfficientNetV2SEncoder(EfficientNetBaseEncoder):
+    def __init__(self, stage_idxs, out_channels, depth=5, channel_multiplier=1.0, depth_multiplier=1.0, drop_rate=0.2):
+        kwargs = _gen_efficientnetv2_s(channel_multiplier, depth_multiplier, drop_rate)
+        super().__init__(stage_idxs, out_channels, depth, **kwargs)
+
+class EfficientNetV2MEncoder(EfficientNetBaseEncoder):
+    def __init__(self, stage_idxs, out_channels, depth=5, channel_multiplier=1.0, depth_multiplier=1.0, drop_rate=0.2):
+        kwargs = _gen_efficientnetv2_m(channel_multiplier, depth_multiplier, drop_rate)
+        super().__init__(stage_idxs, out_channels, depth, **kwargs)
+
+class EfficientNetV2LEncoder(EfficientNetBaseEncoder):
+    def __init__(self, stage_idxs, out_channels, depth=5, channel_multiplier=1.0, depth_multiplier=1.0, drop_rate=0.2):
+        kwargs = _gen_efficientnetv2_l(channel_multiplier, depth_multiplier, drop_rate)
+        super().__init__(stage_idxs, out_channels, depth, **kwargs)
 
 def prepare_settings(settings):
     return {
@@ -379,4 +516,53 @@ timm_efficientnet_encoders = {
             "drop_rate": 0.4,
         },
     },
+
+    # add efficientnet v2
+    'efficientnetv2_s': {
+        "encoder": EfficientNetV2SEncoder,
+        "pretrained_settings": {
+            "imagenet": prepare_settings(default_cfgs["efficientnetv2_s"]),
+        },
+        "params": {
+#            "out_channels": (3, 24, 48, 64, 160, 272),
+            "out_channels": (3, 24, 48, 64, 160, 256),
+            "stage_idxs": (2, 3, 5),
+#            "channel_multiplier": 1.4,
+#            "depth_multiplier": 1.8,
+#            "drop_rate": 0.4,
+        },
+    },
+
+    'efficientnetv2_m': {
+        "encoder": EfficientNetV2MEncoder,
+        "pretrained_settings": {
+            "imagenet": prepare_settings(default_cfgs["efficientnetv2_m"]),
+        },
+        "params": {
+            "out_channels": (3, 24, 48, 80, 176, 512),
+            "stage_idxs": (2, 3, 5),
+        },
+    },
+
+    'efficientnetv2_l': {
+        "encoder": EfficientNetV2LEncoder,
+        "pretrained_settings": {
+            "imagenet": prepare_settings(default_cfgs["efficientnetv2_l"]),
+        },
+        "params": {
+            "out_channels": (3, 32, 64, 96, 224, 640),
+            "stage_idxs": (2, 3, 5),
+        },
+    },
+
+
+
 }
+
+
+
+#    'efficientnetv2_rw_s'
+#    'efficientnetv2_rw_m'
+#    'efficientnetv2_s'
+#    'efficientnetv2_m'
+#    'efficientnetv2_l'

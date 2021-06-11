@@ -236,6 +236,7 @@ class SegTrainer(object):
         elif args.loss == 'abCE':
             self.criterion = None # abCEロスはsemi-supervisedモードのsupervise lossのみで使用する。下で設定。
 
+
         elif args.loss == 'mae':
             pass
 
@@ -333,6 +334,7 @@ class SegTrainer(object):
                                           batch_size=(args.batch_size
                                                       if x == 'train' else 1),
                                           shuffle=(True if x == 'train' else False),
+                                          drop_last=(True if x == 'train' else False),
                                           num_workers=args.num_workers * self.device_count,
                                           pin_memory=(True if x == 'train' else False))
                             for x in ['train', 'val']}

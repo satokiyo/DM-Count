@@ -111,7 +111,9 @@ class DownBlock(nn.Module):
         x_avg = self.avgpool(x)
         x_cat = torch.cat([x_max, x_avg], dim=1)
         y     = self.conv(x_cat)
-        return y + x_cat
+        return y
+        #return y  + x_max
+       # return y + x_cat
 
 class UpBlock(nn.Module):
     """Upssampling followed by ConvBNActBlock"""
@@ -146,11 +148,17 @@ class COPLENet(nn.Module):
     ):
         super(COPLENet, self).__init__()
         self.in_chns   = in_channels
-        self.ft_chns   = (32, 64, 128, 256, 512)
+        self.ft_chns   = (32, 32, 64, 64, 128)
+        #self.ft_chns   = (64, 64, 64, 64, 64)
+        #self.ft_chns   = (32, 32, 32, 64, 64)
+        #self.ft_chns   = (8, 8, 8, 8, 8)
+        #self.ft_chns   = (8, 16, 32, 64, 128)
+        #self.ft_chns   = (16, 32, 64, 128, 256)
+        #self.ft_chns   = (32, 64, 128, 256, 512)
         #self.ft_chns   = (64, 128, 256, 512, 1024)
         self.n_class   = classes
         self.bilinear  = True
-        self.dropout   = (0.4, 0.4, 0.4, 0.4, 0.4)
+        self.dropout   = (0.2, 0.2, 0.2, 0.2, 0.2)
         self.use_attention_branch=use_attention_branch
         self.deep_supervision=deep_supervision
         assert(len(self.ft_chns) == 5)
@@ -160,10 +168,15 @@ class COPLENet(nn.Module):
         f2_half = int(self.ft_chns[2] / 2)
         f3_half = int(self.ft_chns[3] / 2)
         self.in_conv= ConvBNActBlock(self.in_chns, self.ft_chns[0], self.dropout[0])
+        self.in_conv_1= ConvBNActBlock(self.ft_chns[0], self.ft_chns[0], self.dropout[0])
         self.down1  = DownBlock(self.ft_chns[0], self.ft_chns[1], self.dropout[1])
+        self.down1_1  = ConvBNActBlock(self.ft_chns[1], self.ft_chns[1], self.dropout[0])
         self.down2  = DownBlock(self.ft_chns[1], self.ft_chns[2], self.dropout[2])
+        self.down2_1  = ConvBNActBlock(self.ft_chns[2], self.ft_chns[2], self.dropout[0])
         self.down3  = DownBlock(self.ft_chns[2], self.ft_chns[3], self.dropout[3])
+        self.down3_1  = ConvBNActBlock(self.ft_chns[3], self.ft_chns[3], self.dropout[0])
         self.down4  = DownBlock(self.ft_chns[3], self.ft_chns[4], self.dropout[4])
+        self.down4_1  = ConvBNActBlock(self.ft_chns[4], self.ft_chns[4], self.dropout[0])
         
         self.bridge0= ConvLayer(self.ft_chns[0], f0_half)
         self.bridge1= ConvLayer(self.ft_chns[1], f1_half)
@@ -195,7 +208,10 @@ class COPLENet(nn.Module):
 
         # OCR
         #decoder_channels = (1024, 512, 256, 128, 64)
-        decoder_channels = (512, 256, 128, 64, 32)
+        #decoder_channels = (512, 256, 128, 64, 32)
+        #decoder_channels = (256, 128, 64, 32, 16)
+        #decoder_channels = (128, 64, 32, 16, 8)
+        decoder_channels = self.ft_chns[::-1]
         self.use_ocr=False
         if use_ocr:
             self.use_ocr=True
@@ -255,14 +271,19 @@ class COPLENet(nn.Module):
           x = torch.transpose(x, 1, 2)
           x = torch.reshape(x, new_shape)
         x0  = self.in_conv(x)
+        x0  = self.in_conv_1(x0)
         x0b = self.bridge0(x0)
         x1  = self.down1(x0)
+        x1  = self.down1_1(x1)
         x1b = self.bridge1(x1)
         x2  = self.down2(x1)
+        x2  = self.down2_1(x2)
         x2b = self.bridge2(x2)
         x3  = self.down3(x2)
+        x3  = self.down3_1(x3)
         x3b = self.bridge3(x3)
         x4  = self.down4(x3)
+        x4  = self.down4_1(x4)
 
         # spm
         x0, x1, x2, x3, x4 = self.scale_pyramid_module([x0, x1, x2, x3, x4])
