@@ -22,6 +22,7 @@ from losses.ot_loss import OT_Loss
 from models.dmcount_model import DMCountModel
 import neptune.new as neptune
 from neptune.new.types import File
+import copy
 
 
 def train_collate(batch):
@@ -173,6 +174,8 @@ class Trainer(object):
     def train(self):
         """training process"""
         args = self.args
+        self.prev_model = copy.deepcopy(self.model)
+        self.prev_optimizer = copy.deepcopy(self.optimizer)
         for epoch in range(self.start_epoch, args.max_epoch + 1):
             #self.logger.info('-' * 5 + 'Epoch {}/{}'.format(epoch, args.max_epoch) + '-' * 5)
             self.epoch = epoch
@@ -211,6 +214,7 @@ class Trainer(object):
                 epoch_ot_loss.update(ot_loss.item(), N)
                 epoch_ot_obj_value.update(ot_obj_value.item(), N)
                 epoch_wd.update(wd, N)
+                del wd, ot_obj_value
 
                 # Compute counting loss.
                 count_loss = self.mae(outputs.sum(1).sum(1).sum(1),
@@ -226,10 +230,21 @@ class Trainer(object):
                 epoch_tv_loss.update(tv_loss.item(), N)
 
                 loss = ot_loss + count_loss + tv_loss
+                del ot_loss, count_loss, tv_loss
 
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+
+                if torch.isnan(loss):
+                    self.model = self.prev_model
+                    self.optimizer.load_state_dict(self.prev_optimizer.state_dict())
+                else:
+                    self.prev_model = copy.deepcopy(self.model)
+                    self.prev_optimizer = copy.deepcopy(self.optimizer)
+
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+
+
                 self.scheduler.step(self.epoch + step / iters)
 
                 pred_count = torch.sum(outputs.view(N, -1), dim=1).detach().cpu().numpy()
@@ -237,6 +252,7 @@ class Trainer(object):
                 epoch_loss.update(loss.item(), N)
                 epoch_mse.update(np.mean(pred_err * pred_err), N)
                 epoch_mae.update(np.mean(abs(pred_err)), N)
+                del loss
 
             stream.set_description(
                 'Epoch {} Train, Loss: {:.2f}, OT Loss: {:.2e}, Wass Distance: {:.2f}, OT obj value: {:.2f}, '
