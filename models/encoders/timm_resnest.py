@@ -1,6 +1,6 @@
 from ._base import EncoderMixin
-from timm.models.resnet import ResNet
-from timm.models.resnest import ResNestBottleneck
+from .timm.models.resnet import ResNet
+from .timm.models.resnest import ResNestBottleneck
 import torch.nn as nn
 
 

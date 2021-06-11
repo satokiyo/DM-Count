@@ -11,6 +11,8 @@ class SegModel(nn.Module):
         encoder_weights="imagenet"
         if args.encoder_name in ["resnext101_32x4d"]:
             encoder_weights="ssl"
+        elif "efficientnetv2" in args.encoder_name:
+            encoder_weights=None
         self.model = Unet( # MAnet UnetPlusPlus DeepLabV3Plus PSPnet
             encoder_name=args.encoder_name,
             encoder_weights=encoder_weights,

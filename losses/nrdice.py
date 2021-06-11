@@ -23,7 +23,7 @@ class NoiseRobustDiceLoss(_Loss):
         gamma: float = 1.5,
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
         """Implementation of Dice loss for image segmentation task.
         It supports binary, multiclass and multilabel cases

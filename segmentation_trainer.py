@@ -34,6 +34,7 @@ import neptune.new as neptune
 from neptune.new.types import File
 
 from PIL import Image
+import copy
 
 class SegTrainer(object):
     def __init__(self, args):
@@ -89,7 +90,7 @@ class SegTrainer(object):
                                               weight=None,
                                               use_ocr=use_ocr,
                                               w_loss=1.,
-                                              w_loss_ocr=0.4).to(self.device)
+                                              w_loss_ocr=0.1).to(self.device)
 
             ## Focal lossと類似。Top70%の勾配のみ使うことでonline hard example miningをする。若干Focalの方が良いらしい
             #self.criterion = OhemCrossEntropy(ignore_label=-1,
@@ -116,7 +117,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
         elif args.loss == 'focal':
             self.criterion = FocalLoss(
                                                mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
@@ -133,7 +134,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'jaccard':
             self.criterion = JaccardLoss(
@@ -152,7 +153,7 @@ class SegTrainer(object):
                                                smooth=0.0,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
         elif args.loss == 'lovasz':
             self.criterion = LovaszLoss(
                                                mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
@@ -168,7 +169,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'softce':
             self.criterion = SoftCrossEntropyLoss(
@@ -186,7 +187,7 @@ class SegTrainer(object):
                                                dim = 1,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'wing':
             self.criterion = WingLoss(
@@ -205,7 +206,7 @@ class SegTrainer(object):
                                                curvature = 0.5,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
         elif args.loss == 'combo':
             self.criterion = ComboLoss(
@@ -228,7 +229,7 @@ class SegTrainer(object):
                                                use_sigmoid=True,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
 
         elif args.loss == 'mae':
@@ -256,7 +257,7 @@ class SegTrainer(object):
                                                ignore_index=None,
                                                use_ocr=use_ocr,
                                                w_loss=1.,
-                                               w_loss_ocr=0.4).to(self.device)
+                                               w_loss_ocr=0.1).to(self.device)
 
 
         # optimizer
@@ -288,6 +289,7 @@ class SegTrainer(object):
                                           batch_size=(args.batch_size
                                                       if x == 'train' else 1),
                                           shuffle=(True if x == 'train' else False),
+                                          drop_last=(True if x == 'train' else False),
                                           num_workers=args.num_workers * self.device_count,
                                           pin_memory=(True if x == 'train' else False))
                             for x in ['train', 'val']}
@@ -358,6 +360,8 @@ class SegTrainer(object):
     def train(self):
         """training process"""
         args = self.args
+        self.prev_model = copy.deepcopy(self.model)
+        self.prev_optimizer = copy.deepcopy(self.optimizer)
         for epoch in range(self.start_epoch, args.max_epoch + 1):
             #self.logger.info('-' * 5 + 'Epoch {}/{}'.format(epoch, args.max_epoch) + '-' * 5)
             self.epoch = epoch
@@ -417,9 +421,17 @@ class SegTrainer(object):
                 #epoch_mse.update(torch.mean(pred_err * pred_err), N)
                 #epoch_mae.update(torch.mean(torch.abs(pred_err)), N)
 
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+                if torch.isnan(loss):
+                    self.model = self.prev_model
+                    self.optimizer.load_state_dict(self.prev_optimizer.state_dict())
+                else:
+                    self.prev_model = copy.deepcopy(self.model)
+                    self.prev_optimizer = copy.deepcopy(self.optimizer)
+
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+
                 self.scheduler.step(self.epoch + step / iters)
 
             stream.set_description(

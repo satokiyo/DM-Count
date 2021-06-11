@@ -194,7 +194,7 @@ class LovaszLoss(_Loss):
         from_logits: bool = True,
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
         """Implementation of Lovasz loss for image segmentation task.
         It supports binary, multiclass and multilabel cases

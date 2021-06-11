@@ -21,7 +21,7 @@ class JaccardLoss(_Loss):
         eps: float = 1e-7,
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
         """Implementation of Jaccard loss for image segmentation task.
         It supports binary, multiclass and multilabel cases

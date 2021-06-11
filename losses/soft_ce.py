@@ -19,7 +19,7 @@ class SoftCrossEntropyLoss(nn.Module):
         dim: int = 1,
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
         """Drop-in replacement for torch.nn.CrossEntropyLoss with label_smoothing
         

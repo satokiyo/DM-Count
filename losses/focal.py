@@ -22,7 +22,7 @@ class FocalLoss(_Loss):
         reduced_threshold: Optional[float] = None,
         use_ocr=False,
         w_loss=1.,
-        w_loss_ocr=0.4,
+        w_loss_ocr=0.1,
     ):
         """Compute Focal loss
 
