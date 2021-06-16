@@ -196,7 +196,8 @@ class Unet(SegmentationModel):
 #            x_ul = self.encoder(x_ul)
 #            output_ul = self.main_decoder(x_ul)
             if self.deep_supervision:
-                output_ul_main, _ = self.decoder(*features)
+                output_ul_main, intermediates = self.decoder(*features)
+                del intermediates
             else:
                 output_ul_main = self.decoder(*features)
     
@@ -205,6 +206,7 @@ class Unet(SegmentationModel):
 
             #outputs_ul_aux = self.aux_decoder(*features)
             masks_aux = [aux_decoder(features[-1], masks.detach()) for aux_decoder in self.aux_decoders]
+            del features, x
 
             return masks, masks_aux
 

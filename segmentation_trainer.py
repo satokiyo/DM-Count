@@ -306,9 +306,7 @@ class SegTrainer(object):
 #        trainable_params = [{'params': filter(lambda p:p.requires_grad, self.model.get_other_params())},
 #                            {'params': filter(lambda p:p.requires_grad, self.model.get_backbone_params()), 'lr': args.lr / 10}]
 #
-#        self.optimizer = optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr)
 
         # scheduler
         #T_0=35 #Number of iterations for the first restart.
@@ -353,7 +351,6 @@ class SegTrainer(object):
         self.run["sys/tags"].add(args.neptune_tag)  # tag
 
         # save dir setting
-        #sub_dir = 'encoder-{}_input-{}_wot-{}_wtv-{}_reg-{}_nIter-{}_normCood-{}'.format(
         sub_dir = 'encoder-{}_input-{}_downrate-{}_scale_pyramid_module-{}_attention_branch-{}_albumentation-{}_copy_paste-{}_deep_supervision-{}_ocr-{}'.format(
             args.encoder_name, args.crop_size, args.downsample_ratio, args.scale_pyramid_module, args.use_attention_branch, args.use_albumentation, args.use_copy_paste, args.deep_supervision, args.use_ocr)
 
@@ -396,8 +393,6 @@ class SegTrainer(object):
             self.logger.info('random initialization')
 
         self.save_list = Save_Handle(max_num=1)
-        #self.best_mae = np.inf
-        #self.best_mse = np.inf
         self.best_loss = np.inf
         self.best_count = 0
 
@@ -420,8 +415,6 @@ class SegTrainer(object):
         epoch_mse = AverageMeter()
         epoch_start = time.time()
         self.model.train()  # Set model to training mode
-#        iters = len(self.dataloaders['train'])
-#        stream = tqdm(self.dataloaders['train'])
 
         if self.args.use_ssl:
             iters = len(self.dataloader_ul)
@@ -433,9 +426,6 @@ class SegTrainer(object):
             stream = tqdm(zip(self.dataloaders['train'], cycle(self.dataloader_ul)), total=iters)
             #stream = tqdm(range(len(self.dataloaders['train'])), ncols=135)
             #dataloader = iter(zip(self.dataloaders['train'], cycle(self.dataloader_ul)))
-#        for step, (inputs, masks) in enumerate(stream):
-#        for step in tbar:
-#                (x_l,x_ul) = next(dataloader)
         for step, (x_l, x_ul) in enumerate(stream):
             inputs, masks = x_l
             if self.args.use_ssl:
@@ -521,8 +511,6 @@ class SegTrainer(object):
             stream.set_description(
                 'Epoch {} Train, Loss: {:.2f}'
                     .format(self.epoch, epoch_loss.get_avg()))
-                #'Epoch {} Train, Loss: {:.2f}, MSE: {:.2f} MAE: {:.2f}'
-                #    .format(self.epoch, epoch_loss.get_avg(), torch.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg()))
             del loss
  
             # show image
@@ -554,7 +542,6 @@ class SegTrainer(object):
                         vis_map = vis_map.resize(org_img.shape[:2])
                     vis_map = np.array(vis_map.convert("RGB"))
                     # overlay
-                    #overlay = ((org_img/4) + (vis_map/1.5))
                     overlay = np.uint8((org_img/2) + (vis_map/2)).transpose(2,0,1)
                     # visdom
                     self.vlog.image(imgs=[overlay],
@@ -575,17 +562,13 @@ class SegTrainer(object):
 
         # Log training losses to visdom
         self.vlog.train_losses(terms=[epoch_loss.get_avg()],#,
-                                        #epoch_mse.get_avg(),
-                                        #epoch_mae.get_avg(),],
                                iteration_number=self.epoch,
                                terms_legends=['Loss'])#,
-                                                #'MSE',
-                                                #'MAE',])
         # Log training losses to neptune
         self.run['train/Loss'].log(epoch_loss.get_avg())
-        #self.run['train/MSE'].log(epoch_mse.get_avg())
-        #self.run['train/MAE'].log(epoch_mae.get_avg())
         self.run['train/lr'].log(self.scheduler.get_last_lr())
+
+        del epoch_loss
 
 
     def val_epoch(self):
@@ -593,13 +576,6 @@ class SegTrainer(object):
         epoch_start = time.time()
         self.model.eval()  # Set model to evaluate mode
         epoch_loss = []
-        #epoch_mse = []
-        #epoch_mae = []
-#        epoch_miou = []
-#        epoch_iou_class0 = []
-#        epoch_iou_class1 = []
-#        epoch_iou_class2 = []
-#        epoch_iou_class3 = []
         nums=1
         epoch_iou_class = {f'{i}' : [] for i in range(self.args.classes)}
         epoch_dice_class = {f'{i}' : [] for i in range(self.args.classes)}
@@ -626,10 +602,12 @@ class SegTrainer(object):
                 elif self.args.deep_supervision:
                     if self.args.use_ocr:
                         outputs, intermediates, out_ocr = self.model(inputs)
+                        del intermediates, out_ocr
                         _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
                         loss = _loss
                     else:
                         outputs, intermediates = self.model(inputs)
+                        del intermediates
                         if self.args.loss == "abCE":
                             _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
                         else:
@@ -647,18 +625,10 @@ class SegTrainer(object):
                             _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
                         else:
                             _loss = self.criterion(outputs, masks)
-#                        mse = self.mse(outputs, masks)
-#                        mae = self.mae(outputs, masks)
-                        #pred_err = outputs - masks
                         loss = _loss
 
                 epoch_loss.append(loss.item())
-                # Compute MSE,MAE
-                #pred_err = outputs - masks
-                #mse = torch.mean(pred_err * pred_err).detach().cpu().numpy()
-                #mae = torch.mean(torch.abs(pred_err)).detach().cpu().numpy()
-                #epoch_mse.append(mse)
-                #epoch_mae.append(mae)
+                del loss
 
                 pred = outputs
                 confusion_matrix = np.zeros((self.args.classes, self.args.classes, nums))
@@ -677,6 +647,8 @@ class SegTrainer(object):
                         self.args.classes,
                         ignore=-1,
                     )
+                    del x
+                del pred
                 for i in range(nums):
                     pos = confusion_matrix[..., i].sum(1) # pred
                     res = confusion_matrix[..., i].sum(0) # label
@@ -701,19 +673,12 @@ class SegTrainer(object):
                     epoch_recall_class[f'{i}'].append(recall_array[i])
                     epoch_precision_class[f'{i}'].append(precision_array[i])
 
-#                epoch_iou_class0.append(iou_array[0])
-#                epoch_iou_class1.append(iou_array[1])
-#                epoch_iou_class2.append(iou_array[2])
-#                epoch_iou_class3.append(iou_array[3])
-#                epoch_miou.append(mean_iou)
-
                 epoch_acc.append(acc)
                 epoch_miou.append(mean_iou)
                 epoch_dice_macro.append(dice_macro)
                 epoch_recall_macro.append(recall_macro)
                 epoch_precision_macro.append(precision_macro)
 
-                #stream.set_description('Epoch {} Val, Loss: {:.2f} MSE: {:.2f} MAE: {:.2f}'.format(self.epoch, loss, mse, mae))
                 stream.set_description('Epoch {} Val, Loss: {:.2f} iou0: {:.2f} iou1: {:.2f} iou2: {:.2f} iou3: {:.2f} miou: {:.2f}'
                                               .format(self.epoch,
                                                np.mean(np.array(epoch_loss)),
@@ -722,12 +687,6 @@ class SegTrainer(object):
                                                np.mean(np.array(epoch_iou_class['2'])),
                                                np.mean(np.array(epoch_iou_class['3'])),
                                                np.mean(np.array(epoch_miou))))
-    #                                           np.mean(np.array(epoch_loss)),
-    #                                           np.mean(np.array(epoch_iou_class0)),
-    #                                           np.mean(np.array(epoch_iou_class1)),
-    #                                           np.mean(np.array(epoch_iou_class2)),
-    #                                           np.mean(np.array(epoch_iou_class3)),
-    #                                           np.mean(np.array(epoch_miou))))
     
                 # show image
                 if step % 20 == 0:
@@ -748,6 +707,8 @@ class SegTrainer(object):
                     vis_map = Image.fromarray(vis_map.astype(np.uint8), mode="P")
                     vis_map.putpalette(PALETTE)
                     org_img = inputs[0].detach().cpu().numpy().transpose(1,2,0)
+                    del outputs
+                    del inputs
                     org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
                     org_img = (org_img*255).astype(np.uint8)
                     if (vis_map.size) != (org_img.shape[:1]):
@@ -764,25 +725,8 @@ class SegTrainer(object):
                     ## neptune
                     #self.run['image_val'].upload(File.as_image(overlay.transpose(1,2,0)))
     
-    #        loss = np.mean(np.array(epoch_loss))
-    #        #mse = np.mean(np.array(epoch_mse))
-    #        #mae = np.mean(np.array(epoch_mae))
-    #        iou0 = np.mean(np.array(epoch_iou_class0))
-    #        iou1 = np.mean(np.array(epoch_iou_class1))
-    #        iou2 = np.mean(np.array(epoch_iou_class2))
-    #        iou3 = np.mean(np.array(epoch_iou_class3))
-    #        miou = np.mean(np.array(epoch_miou))
-
 
         model_state_dic = self.model.state_dict()
-        #if (2.0 * mse + mae) < (2.0 * self.best_mse + self.best_mae):
-        #    self.best_mse = mse
-        #    self.best_mae = mae
-        #    self.logger.info("save best mse {:.2f} mae {:.2f} model epoch {}".format(self.best_mse,
-        #                                                                             self.best_mae,
-        #                                                                             self.epoch))
-        #    torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_{}.pth'.format(self.best_count)))
-        #    self.best_count += 1
 
         loss = np.mean(np.array(epoch_loss))
         if loss < self.best_loss:
@@ -792,20 +736,11 @@ class SegTrainer(object):
             self.best_count += 1
 
         # Log validation losses
-        #self.vlog.val_losses(terms=[loss,mse,mae],
         self.vlog.val_losses(terms=[loss],
                                iteration_number=self.epoch,
                                terms_legends=['LOSS'])
-                               #terms_legends=['LOSS', 'MSE', 'MAE',])
         # Log validation losses to neptune
         self.run['val/Loss'].log(loss)
-#        #self.run['val/MSE'].log(mse)
-#        #self.run['val/MAE'].log(mae)
-#        self.run['val/iou0'].log(iou0)
-#        self.run['val/iou1'].log(iou1)
-#        self.run['val/iou2'].log(iou2)
-#        self.run['val/iou3'].log(iou3)
-#        self.run['val/miou'].log(miou)
 
         for i in range(self.args.classes):
             self.run[f'val/iou{i}'].log(np.mean(np.array(epoch_iou_class[f'{i}'])))
@@ -818,6 +753,19 @@ class SegTrainer(object):
         self.run['val/dice_macro'].log(np.mean(np.array(epoch_dice_macro)))
         self.run['val/recall_macro'].log(np.mean(np.array(epoch_recall_macro)))
         self.run['val/precision_macro'].log(np.mean(np.array(epoch_precision_macro)))
+
+        del loss
+        del epoch_loss
+        del epoch_iou_class
+        del epoch_dice_class
+        del epoch_recall_class
+        del epoch_precision_class
+        del epoch_acc
+        del epoch_miou
+        del epoch_dice_macro
+        del epoch_recall_macro
+        del epoch_precision_macro
+ 
  
 
     def data_check(self):

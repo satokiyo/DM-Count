@@ -30,6 +30,7 @@ class ContextualModule(nn.Module):
         multi_scales = [F.upsample(input=stage(feats), size=(h, w), mode='bilinear') for stage in self.scales]
         weights = [self.__make_weight(feats,scale_feature) for scale_feature in multi_scales]
         overall_features = [(multi_scales[0]*weights[0]+multi_scales[1]*weights[1]+multi_scales[2]*weights[2]+multi_scales[3]*weights[3])/(weights[0]+weights[1]+weights[2]+weights[3])]+ [feats]
+        del multi_scales, weights
         bottle = self.bottleneck(torch.cat(overall_features, 1))
         return self.relu(bottle)
     

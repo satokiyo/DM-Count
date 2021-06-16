@@ -143,6 +143,7 @@ class UnetDecoder(nn.Module):
 
         head = features[0]
         skips = features[1:]
+        del features
 
         out_stack_deep_sup = [] # for deep supervision
 
@@ -152,6 +153,7 @@ class UnetDecoder(nn.Module):
             skip = skips[i] if i < len(skips) else None
             x = decoder_block(x, skip)
             out_stack_deep_sup.append(x)
+            del skip
 
         if self.deep_supervision:
             # allocating deep supervision tensors
@@ -159,13 +161,17 @@ class UnetDecoder(nn.Module):
             # reverse indexing `X_decoder`, so smaller tensors have larger list indices 
             out_stack_deep_sup = out_stack_deep_sup[::-1] # reverse. (512*512*16ch ->...-> 16*16*512ch)
             # deep supervision outputs
-            for i in range(1, len(out_stack_deep_sup)): # (256*256*32ch ->...-> 16*16*512ch) !! Final resolution outputはdeep supervisionでは不要 !!
+            i=1
+            for out_stack in out_stack_deep_sup[1:]: # (256*256*32ch ->...-> 16*16*512ch) !! Final resolution outputはdeep supervisionでは不要 !!
                 # 3-by-3 conv2d --> upsampling --> sigmoid output activation
                 pool_size = 2**(i)
-                hx = self.convs[i](out_stack_deep_sup[i])
+                hx = self.convs[i](out_stack)
+                del out_stack
                 hx = F.interpolate(hx, scale_factor=pool_size, mode="bilinear")
                 # collecting deep supervision tensors
                 intermediates.append(hx)
+                del hx
+                i+=1
             # no need final output
 
             return x, intermediates
