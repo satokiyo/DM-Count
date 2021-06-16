@@ -67,7 +67,7 @@ class ASPP(nn.Module):
         self.conv1 = nn.Conv2d(inplanes*5, inplanes, 1, bias=False)
         self.bn1 = BatchNorm(inplanes)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
+        self.dropout = nn.Dropout(0.2)
         self._init_weight()
 
     def forward(self, x):
@@ -78,6 +78,7 @@ class ASPP(nn.Module):
         x5 = self.global_avg_pool(x)
         x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
         x = torch.cat((x1, x2, x3, x4, x5), dim=1)
+        del x1, x2, x3, x4, x5
 
         x = self.conv1(x)
         x = self.bn1(x)

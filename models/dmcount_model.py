@@ -6,10 +6,14 @@ from models.unetplusplus import UnetPlusPlus
 class DMCountModel(nn.Module):
     def __init__(self, args):
         super(DMCountModel, self).__init__()
-
+        encoder_weights="imagenet"
+        if args.encoder_name in ["resnext101_32x4d"]:
+            encoder_weights="ssl"
+        elif "efficientnetv2" in args.encoder_name:
+            encoder_weights=None
         self.model = Unet( # MAnet UnetPlusPlus DeepLabV3Plus PSPnet
             encoder_name=args.encoder_name,
-            encoder_weights="imagenet",
+            encoder_weights=encoder_weights,
             in_channels=3,
             classes=args.classes,
             activation=None, # "sigmoid"/"softmax" (could be **None** to return logits)
@@ -17,7 +21,10 @@ class DMCountModel(nn.Module):
             scale_pyramid_module=args.scale_pyramid_module, # add
             use_attention_branch=args.use_attention_branch, # add
             downsample_ratio=args.downsample_ratio, # add
+            deep_supervision=args.deep_supervision, # add
+            use_ssl=args.use_ssl, # add
         )
+        self.use_ssl = args.use_ssl
 
 #        self.model = UnetPlusPlus( # MAnet UnetPlusPlus DeepLabV3Plus PSPnet
 #            encoder_name=args.encoder_name,
@@ -44,14 +51,14 @@ class DMCountModel(nn.Module):
 #         nn.ReLU(inplace=True), # not use activation!
 #        )
 
-    def forward(self, input):
-        x = self.model(input)
-        #x = self.activation(x)
+    def forward(self, input, unsupervised=False):
+        x = self.model(input, unsupervised=unsupervised)
+        return x
 
-        mu = x
-        B, C, H, W = mu.size()
-        mu_sum = mu.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
-        mu_normed = mu / (mu_sum + 1e-6)
-        return mu, mu_normed
+#        mu = x
+#        B, C, H, W = mu.size()
+#        mu_sum = mu.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+#        mu_normed = mu / (mu_sum + 1e-6)
+#        return mu, mu_normed
 
 

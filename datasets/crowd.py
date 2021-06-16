@@ -286,10 +286,10 @@ class CellDataset(Base):
                  use_albumentation=0):
         super().__init__(root_path, crop_size, downsample_ratio)
         self.method = method
-        if method not in ['train', 'val', 'val_with_gt', 'test_no_gt']:
+        if method not in ['train', 'val', 'val_no_gt', 'test_no_gt']:
             raise Exception("not implement")
 
-        if method in ['train', 'val', 'val_with_gt']: # with gt
+        if method in ['train', 'val']: # with gt
             self.gt_list = sorted(list(Path(self.root_path).glob("**/*.mat")))
             im_list = []
             for gt in self.gt_list:
@@ -297,7 +297,7 @@ class CellDataset(Base):
                 #img_path = str(gt).split('.')[0] + '.jpg_pred.jpg'
                 im_list.append(img_path)
             self.im_list = im_list
-        elif method ==  'test_no_gt': # without gt
+        elif method in  ['val_no_gt', 'test_no_gt']: # without gt
             self.im_list = sorted(list(Path(self.root_path).glob("**/*.jpg")))
 
         print('number of img: {}'.format(len(self.im_list)))
@@ -359,11 +359,14 @@ class CellDataset(Base):
             #return img, len(keypoints), name
             return img, torch.from_numpy(np.array(keypoints).copy()).float(), name
             #return img, keypoints, name
-        elif self.method == 'val_with_gt':
-            keypoints = sio.loadmat(gd_path)['image_info']
+#        elif self.method == 'val_with_gt':
+#            keypoints = sio.loadmat(gd_path)['image_info']
+#            img = self.trans(img)
+#            #return img, keypoints, name
+#            return img, torch.from_numpy(np.array(keypoints).copy()).float()
+        elif self.method == 'val_no_gt':
             img = self.trans(img)
-            #return img, keypoints, name
-            return img, torch.from_numpy(np.array(keypoints).copy()).float()
+            return img, name
         elif self.method == 'test_no_gt':
             img = self.trans(img)
             return img, name

@@ -3,6 +3,7 @@ import os
 import torch
 from train_helper import Trainer
 from regression_trainer import RegTrainer
+import torch.backends.cudnn as cudnn
 
 
 def str2bool(v):
@@ -12,7 +13,7 @@ def str2bool(v):
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--data-dir', default='data/UCF-Train-Val-Test', help='data path')
-    parser.add_argument('--dataset', default='qnrf', help='dataset name: qnrf, nwpu, sha, shb')
+    parser.add_argument('--dataset', default='cell', help='dataset name: qnrf, nwpu, sha, shb')
     parser.add_argument('--lr', type=float, default=1e-5,
                         help='the initial learning rate')
     parser.add_argument('--weight-decay', type=float, default=1e-4,
@@ -66,18 +67,21 @@ def parse_args():
     parser.add_argument('--use_albumentation', type=int, default=0,)
     parser.add_argument('--project', type=str, default="test")
     parser.add_argument('--input-size', type=int, default=512) 
-    parser.add_argument('--t_0', type=int, default=35) #Number of iterations for the first restart of annealingwarmrestart
+    parser.add_argument('--t_0', type=int, default=500) #Number of iterations for the first restart of annealingwarmrestart
     parser.add_argument('--t_mult', type=int, default=1) # A factor increases after a restart. Default: 1.
     parser.add_argument('--neptune-tag', type=str, nargs='*')
+    parser.add_argument('--activation', type=str,default=None)
+    parser.add_argument('--deep_supervision', type=int,default=0)
+    parser.add_argument('--cfg', type=str,default="")
+    parser.add_argument('--loss', type=str,default="ce") # dice softce focal jaccard lovasz wing combo mae nrdice
+    parser.add_argument('--use_ssl', type=int,default=0) 
+    parser.add_argument('--batch-size-ul', type=int, default=10) 
+    parser.add_argument('--unsupervised_w', type=int, default=30) 
+    parser.add_argument('--rampup_ends', type=float, default=0.4)
+    parser.add_argument('--data_dir_ul', help='data path', type=str, default='')
 
-#    parser.add_argument('--use-background', type=bool, default=True,
-#                        help='whether to use background modelling')
-#    parser.add_argument('--sigma', type=float, default=8.0,
-#                        help='sigma for likelihood')
-#    parser.add_argument('--background-ratio', type=float, default=0.15,
-#                        help='background ratio')
 
-    parser.add_argument('--cfg', type=str, default='')
+
     parser.add_argument('opts',
                         help="Modify config options using the command-line",
                         default=None,
@@ -90,7 +94,11 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    torch.backends.cudnn.benchmark = True
+    # cudnn related setting
+    cudnn.benchmark = True
+    cudnn.deterministic = True
+    cudnn.enabled = True
+
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()  # set vis gpu
     torch.cuda.empty_cache()
     trainer = Trainer(args)

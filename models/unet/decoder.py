@@ -75,6 +75,8 @@ class UnetDecoder(nn.Module):
             center=False,
             scale_pyramid_module=False, # add
             downsample_ratio=1, # add
+            n_class=4, # add
+            deep_supervision=1, # add
     ):
         super().__init__()
 
@@ -124,6 +126,18 @@ class UnetDecoder(nn.Module):
             blocks = blocks[:-i]
         # TO ADD
         self.blocks = nn.ModuleList(blocks)
+        self.n_class=n_class
+        _out_channels = [head_channels] +  [o for o in out_channels]
+        if downsample_ratio > 1:
+            _out_channels = _out_channels[:-i]
+        self.deep_supervision = deep_supervision
+        if deep_supervision:
+            self.convs=[nn.Sequential(
+                          nn.Conv2d(och, self.n_class, 3, stride=1, padding=1),
+                          nn.ReLU(inplace=True),
+                        ).cuda() for och in _out_channels[::-1]]
+ 
+
 
     def forward(self, *features):
 
@@ -134,10 +148,41 @@ class UnetDecoder(nn.Module):
 
         head = features[0]
         skips = features[1:]
+        del features
+
 
         x = self.center(head)
+        if self.deep_supervision:
+            out_stack_deep_sup = [] # for deep supervision
+            out_stack_deep_sup.append(x)
         for i, decoder_block in enumerate(self.blocks):
             skip = skips[i] if i < len(skips) else None
             x = decoder_block(x, skip)
+            if self.deep_supervision:
+                out_stack_deep_sup.append(x)
+            del skip
 
-        return x
+        if self.deep_supervision:
+            # allocating deep supervision tensors
+            intermediates = []
+            # reverse indexing `X_decoder`, so smaller tensors have larger list indices 
+            out_stack_deep_sup = out_stack_deep_sup[::-1] # reverse. (512*512*16ch ->...-> 16*16*512ch)
+            # deep supervision outputs
+            i=1
+            for out_stack in out_stack_deep_sup[1:]: # (256*256*32ch ->...-> 16*16*512ch) !! Final resolution outputはdeep supervisionでは不要 !!
+                # 3-by-3 conv2d --> upsampling --> sigmoid output activation
+                pool_size = 2**(i)
+                hx = self.convs[i](out_stack)
+                del out_stack
+                hx = F.interpolate(hx, scale_factor=pool_size, mode="bilinear")
+                # collecting deep supervision tensors
+                intermediates.append(hx)
+                del hx
+                i+=1
+            # no need final output
+            del out_stack_deep_sup
+
+            return x, intermediates
+
+        else:
+            return x

@@ -9,6 +9,9 @@ class SegmentationModel(torch.nn.Module):
         init.initialize_head(self.segmentation_head)
         if self.classification_head is not None:
             init.initialize_head(self.classification_head)
+        if self.aux_decoders is not None:
+            for aux_decoder in self.aux_decoders:
+                init.initialize_decoder(aux_decoder)
 
     def forward(self, x):
         """Sequentially pass `x` trough model`s encoder, decoder and heads"""

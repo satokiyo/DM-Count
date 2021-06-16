@@ -22,7 +22,9 @@ from losses.ot_loss import OT_Loss
 from models.dmcount_model import DMCountModel
 import neptune.new as neptune
 from neptune.new.types import File
+from itertools import cycle
 import copy
+import torch.nn.functional as F
 
 
 def train_collate(batch):
@@ -67,6 +69,7 @@ class Trainer(object):
         #T_0=35 #Number of iterations for the first restart.
         #T_mult=1 # A factor increases after a restart. Default: 1.
         eta_min=1e-5 #Minimum learning rate. Default: 0.
+        args.t_0 = int(args.max_epoch // 2)
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, eta_min)
 
         # dataset
@@ -89,6 +92,10 @@ class Trainer(object):
                              'val': CellDataset(os.path.join(args.data_dir, 'val'),
                                              args.crop_size, downsample_ratio, 'val'),
                              }
+            self.dataset_ul = CellDataset(os.path.join(args.data_dir_ul, 'ssl'),
+                                            args.crop_size,
+                                            downsample_ratio,
+                                            'val_no_gt')
  
         else:
             raise NotImplementedError
@@ -99,11 +106,33 @@ class Trainer(object):
                                           batch_size=(args.batch_size
                                                       if x == 'train' else 1),
                                           shuffle=(True if x == 'train' else False),
+                                          drop_last=(True if x == 'train' else False),
                                           num_workers=args.num_workers * self.device_count,
                                           pin_memory=(True if x == 'train' else False))
                             for x in ['train', 'val']}
 
-        
+        self.dataloader_ul = DataLoader(self.dataset_ul,
+                                          collate_fn=default_collate,
+                                          batch_size=args.batch_size_ul,
+                                          shuffle=True,
+                                          drop_last=True,
+                                          num_workers=args.num_workers * self.device_count,
+                                          pin_memory=True)
+
+        if args.use_ssl:
+            from losses.losses import softmax_kl_loss, softmax_mse_loss, softmax_js_loss, consistency_weight
+            # Supervised and unsupervised losses
+            #self.unsuper_loss = softmax_kl_loss
+            self.unsuper_loss = softmax_mse_loss
+            #self.unsuper_loss = softmax_js_loss
+            #rampup_ends = int(config['ramp_up'] * config['trainer']['epochs'])
+            rampup_ends = int(args.max_epoch * args.rampup_ends)
+            iters_per_epoch = int(len(self.dataloader_ul) // args.batch_size_ul)
+            cons_w_unsup = consistency_weight(final_w=args.unsupervised_w, iters_per_epoch=iters_per_epoch ,
+                                                rampup_ends=rampup_ends)
+            self.unsup_loss_w = cons_w_unsup
+
+
         # data check
         if args.data_check:
             self.data_check() # only check dataloader
@@ -115,7 +144,6 @@ class Trainer(object):
                            source_files=['*.py','*.sh'])#, 'requirements.txt'])
         for arg in vars(args):
             self.run[f'param_{arg}'] = getattr(args, arg)
-        #self.run["sys/tags"].add(['run-organization', 'me'])  # organize things
         self.run["sys/tags"].add(args.neptune_tag)  # tag
 
         # save dir setting
@@ -195,10 +223,23 @@ class Trainer(object):
         epoch_start = time.time()
         self.model.train()  # Set model to training mode
 
-        iters = len(self.dataloaders['train'])
-        stream = tqdm(self.dataloaders['train'])
-        #for step, (inputs, points, gt_discrete) in enumerate(self.dataloaders['train']):
-        for step, (inputs, points, gt_discrete) in enumerate(stream):
+        if self.args.use_ssl:
+            iters = len(self.dataloader_ul)
+            stream = tqdm(zip(cycle(self.dataloaders['train']), self.dataloader_ul), total=iters)
+            #stream = tqdm(range(len(self.dataloader_ul)), ncols=135)
+            #dataloader = iter(zip(cycle(self.dataloaders['train']), self.dataloader_ul))
+        else:
+            iters = len(self.dataloaders['train'])
+            stream = tqdm(zip(self.dataloaders['train'], cycle(self.dataloader_ul)), total=iters)
+            #stream = tqdm(range(len(self.dataloaders['train'])), ncols=135)
+            #dataloader = iter(zip(self.dataloaders['train'], cycle(self.dataloader_ul)))
+        for step, (x_l, x_ul) in enumerate(stream):
+            inputs, points, gt_discrete = x_l
+            if self.args.use_ssl:
+                x_ul, name = x_ul
+                x_ul = x_ul.to(self.device)
+            else:
+                del x_ul
             inputs = inputs.to(self.device)
             gd_count = np.array([len(p) for p in points], dtype=np.float32)
             points = [p.to(self.device) for p in points]
@@ -206,7 +247,15 @@ class Trainer(object):
             N = inputs.size(0)
 
             with torch.set_grad_enabled(True):
-                outputs, outputs_normed = self.model(inputs)
+                if self.args.deep_supervision:
+                    outputs, intermediates = self.model(inputs)
+                else:
+                    outputs = self.model(inputs)
+
+                B, C, H, W = outputs.size()
+                mu_sum = outputs.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+                outputs_normed = outputs / (mu_sum + 1e-6)
+
                 # Compute OT loss.
                 ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points)
                 ot_loss = ot_loss * self.args.wot
@@ -228,10 +277,41 @@ class Trainer(object):
                 tv_loss = (self.tv_loss(outputs_normed, gt_discrete_normed).sum(1).sum(1).sum(
                     1) * torch.from_numpy(gd_count).float().to(self.device)).mean(0) * self.args.wtv
                 epoch_tv_loss.update(tv_loss.item(), N)
+                del outputs_normed, gd_count_tensor, gt_discrete_normed
 
                 loss = ot_loss + count_loss + tv_loss
                 del ot_loss, count_loss, tv_loss
 
+                if self.args.deep_supervision:
+                    w_deep_sup = 0.4
+                    w_each = w_deep_sup / len(intermediates)
+                    #deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
+                    deep_sup_loss = []
+                    for i in intermediates:
+                        B, C, H, W = i.size()
+                        mu_sum = i.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+                        outputs_normed = i / (mu_sum + 1e-6)
+                        ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, i, points)
+                        del wd, ot_obj_value
+                        ot_loss = ot_loss * w_each
+                        deep_sup_loss.append(ot_loss)
+                    loss = loss + torch.stack(deep_sup_loss).sum()
+                    del intermediates, deep_sup_loss
+
+                if self.args.use_ssl: # semi-supervised
+                    output_ul_main, outputs_ul_aux = self.model(x_ul, unsupervised=True)
+                    del x_ul
+                    targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
+                    loss_unsup = []
+                    for aux_out in outputs_ul_aux: # aux decoder outputs
+                        loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=False))
+                    # Compute the unsupervised loss
+                    loss_unsup = sum(loss_unsup) / len(loss_unsup)
+                    weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)
+                    loss_unsup = loss_unsup * weight_u
+                    loss = loss + loss_unsup
+
+                    del output_ul_main, outputs_ul_aux, loss_unsup
 
                 if torch.isnan(loss):
                     self.model = self.prev_model
@@ -262,20 +342,21 @@ class Trainer(object):
                             np.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg()))
  
             # show image
-            if step % 50 == 0:
+            if step % 10 == 0:
                 # show images to original size (1枚目の画像だけを表示する)
                 vis_img = outputs[0, 0].detach().cpu().numpy()
+                del outputs
                 # normalize density map values from 0 to 1, then map it to 0-255.
-                vis_img = (vis_img - vis_img.min()) / (vis_img.max() - vis_img.min() + 1e-5)
+                vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
                 vis_img = (vis_img*255).astype(np.uint8)
                 vis_img = cv2.applyColorMap(vis_img, cv2.COLORMAP_VIRIDIS)
 #                vis_img = cv2.resize(vis_img, dsize=(int(self.args.input_size), int(self.args.input_size)), interpolation=cv2.INTER_NEAREST)
-                vis_img = vis_img.transpose(2,0,1)
+                vis_img = vis_img.transpose(2,0,1) # cv2.resize returns cv image
                 org_img = inputs[0].detach().cpu().numpy()
-                org_img = (org_img - org_img.min()) / (org_img.max() - org_img.min() + 1e-5)
+                org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
                 org_img = (org_img*255).astype(np.uint8)
                 # overlay
-                overlay = ((org_img/4) + (vis_img/1.5))
+                overlay = ((org_img/2) + (vis_img/2))
                 # paint annotation point
                 points = points[0].detach().cpu().numpy()
                 if(len(points)>0):
@@ -346,15 +427,29 @@ class Trainer(object):
         epoch_wd = []
         epoch_res = []
         stream = tqdm(self.dataloaders['val'])
-        #for step, (inputs, count, name) in enumerate(self.dataloaders['val']):
-        #for step, (inputs, count, name) in enumerate(stream):
         for step, (inputs, points, name) in enumerate(stream):
             inputs = inputs.to(self.device)
             gd_count = np.array([len(p) for p in points], dtype=np.float32)
             points = [p.to(self.device) for p in points]
             assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
             with torch.set_grad_enabled(False):
-                outputs, outputs_normed = self.model(inputs)
+                #x = self.model(inputs)
+                #mu = x
+                #B, C, H, W = mu.size()
+                #mu_sum = mu.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+                #mu_normed = mu / (mu_sum + 1e-6)
+                #outputs, outputs_normed = mu, mu_normed
+                #del x, mu, mu_normed
+
+                if self.args.deep_supervision:
+                    outputs, intermediates = self.model(inputs)
+                else:
+                    outputs = self.model(inputs)
+
+                B, C, H, W = outputs.size()
+                mu_sum = outputs.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+                outputs_normed = outputs / (mu_sum + 1e-6)
+
                 # Compute OT loss.
                 ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points)
                 ot_loss = ot_loss * self.args.wot
@@ -369,21 +464,21 @@ class Trainer(object):
                 epoch_res.append(res)
 
             # show image
-            if step % 50 == 0:
+            if step % 10 == 0:
                 # show images to original size (1枚目の画像だけを表示する)
                 vis_img = outputs[0, 0].detach().cpu().numpy()
+                del outputs
                 # normalize density map values from 0 to 1, then map it to 0-255.
-                vis_img = (vis_img - vis_img.min()) / (vis_img.max() - vis_img.min() + 1e-5)
+                vis_img = (vis_img - np.min(vis_img)) / np.ptp(vis_img)
                 vis_img = (vis_img*255).astype(np.uint8)
                 vis_img = cv2.applyColorMap(vis_img, cv2.COLORMAP_VIRIDIS)
 #                vis_img = cv2.resize(vis_img, dsize=(int(self.args.input_size), int(self.args.input_size)), interpolation=cv2.INTER_NEAREST)
-                vis_img = vis_img.transpose(2,0,1)
-
+                vis_img = vis_img.transpose(2,0,1) # cv2.resize returns cv image
                 org_img = inputs[0].detach().cpu().numpy()
-                org_img = (org_img - org_img.min()) / (org_img.max() - org_img.min() + 1e-5)
+                org_img = (org_img - np.min(org_img)) / np.ptp(org_img)
                 org_img = (org_img*255).astype(np.uint8)
                 # overlay
-                overlay = ((org_img/5) + (vis_img))
+                overlay = ((org_img/2) + (vis_img/2))
 
                 # visdom
                 self.vlog.image(imgs=[overlay],
@@ -437,7 +532,7 @@ class Trainer(object):
             for i in range(num):
                 img, keypoints, gt_discrete = train_dataset[i]
                 img = img.detach().cpu().numpy()
-                img = (img - img.min()) / (img.max() - img.min() + 1e-5)
+                img = (img - np.min(img)) / np.ptp(img)
                 img = (img*255).astype(np.uint8)
                 # paint annotation point
                 points = keypoints.detach().cpu().numpy()

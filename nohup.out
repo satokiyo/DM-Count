@@ -18406,3 +18406,21 @@ INFO:tornado.access:200 POST /events (127.0.0.1) 1.13ms
 INFO:tornado.access:200 POST /win_exists (127.0.0.1) 0.39ms
 INFO:tornado.access:200 POST /update (127.0.0.1) 34.93ms
 INFO:tornado.access:200 POST /events (127.0.0.1) 1.14ms
+INFO:root:Application Started
+INFO:tornado.access:200 POST /env/default_environment (127.0.0.1) 0.42ms
+INFO:tornado.access:101 GET /vis_socket (127.0.0.1) 0.28ms
+INFO:root:Opened visdom socket from ip: 127.0.0.1
+INFO:tornado.access:200 POST /win_exists (127.0.0.1) 1.36ms
+INFO:tornado.access:200 POST /win_exists (127.0.0.1) 0.20ms
+INFO:tornado.access:200 POST /events (127.0.0.1) 1.77ms
+INFO:tornado.access:304 GET / (172.17.0.1) 10.71ms
+INFO:tornado.access:200 GET /static/js/plotly-plotly.min.js?v=a1dc7238e3b0a448184274be4f317f3f7dcef837c6346ab287cf6927fbb669d761330f5921e7f733c6b0fe8b584a0b0fc4b7598b71d086523d2225f71f94b1a4 (172.17.0.1) 8.28ms
+INFO:tornado.access:101 GET /socket (172.17.0.1) 0.34ms
+INFO:root:Opened new socket from ip: 172.17.0.1
+INFO:tornado.access:304 GET /static/fonts/glyphicons-halflings-regular.woff2 (172.17.0.1) 0.46ms
+INFO:tornado.access:200 POST /env/default_environment (172.17.0.1) 3.03ms
+INFO:tornado.access:200 POST /env/default_environment (172.17.0.1) 5.43ms
+INFO:tornado.access:200 GET /favicon.png (172.17.0.1) 9.06ms
+INFO:tornado.access:304 GET /extensions/MathMenu.js?V=2.7.1 (172.17.0.1) 8.19ms
+INFO:tornado.access:304 GET /extensions/MathZoom.js?V=2.7.1 (172.17.0.1) 8.76ms
+INFO:tornado.access:200 POST /events (127.0.0.1) 3.25ms
