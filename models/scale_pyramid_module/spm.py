@@ -46,6 +46,9 @@ class ASPP(nn.Module):
             dilations = [1, 6, 12, 18]
         elif output_stride == 8:
             dilations = [1, 12, 24, 36]
+        elif output_stride == 32:
+            dilations = [1, 2, 3, 6]
+            #dilations = [1, 3, 6, 9]
         else:
             raise NotImplementedError
 
@@ -67,7 +70,7 @@ class ASPP(nn.Module):
         self.conv1 = nn.Conv2d(inplanes*5, inplanes, 1, bias=False)
         self.bn1 = BatchNorm(inplanes)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
+        self.dropout = nn.Dropout(0.2)
         self._init_weight()
 
     def forward(self, x):
@@ -78,6 +81,7 @@ class ASPP(nn.Module):
         x5 = self.global_avg_pool(x)
         x5 = F.interpolate(x5, size=x4.size()[2:], mode='bilinear', align_corners=True)
         x = torch.cat((x1, x2, x3, x4, x5), dim=1)
+        del x1, x2, x3, x4, x5
 
         x = self.conv1(x)
         x = self.bn1(x)
@@ -108,10 +112,11 @@ class ScalePyramidModule(nn.Module):
     def forward(self, input):
         ret = []
         for i, tensor in enumerate(input):
-            if i == 3: # 1/2^4 = 1/8
+            if i == 3: # 1/2^3 = 1/8
                 tensor = self.can(input[i])
-            if i == 4: # 1/2^5 = 1/16
+            if i == 4: # 1/2^4 = 1/16
                 tensor = self.assp(input[i])
             ret.append(tensor)
+            del tensor
 
         return ret

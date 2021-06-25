@@ -221,9 +221,15 @@ class abCE_loss(nn.Module):
 def softmax_mse_loss(inputs, targets, conf_mask=False, threshold=None, use_softmax=False):
     assert inputs.requires_grad == True and targets.requires_grad == False
     assert inputs.size() == targets.size() # (batch_size * num_classes * H * W)
-    inputs = F.softmax(inputs, dim=1)
+    if inputs.size(1) > 1:
+        inputs = F.softmax(inputs, dim=1)
+    else:
+        inputs = F.normalize(inputs,p=1)
     if use_softmax:
-        targets = F.softmax(targets, dim=1)
+        if inputs.size(1) > 1:
+            targets = F.softmax(targets, dim=1)
+        else:
+            targets = F.normalize(targets, p=1)
 
     if conf_mask:
         loss_mat = F.mse_loss(inputs, targets, reduction='none')

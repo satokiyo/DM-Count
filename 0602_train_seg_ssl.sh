@@ -16,7 +16,7 @@ crop_size=512
 downsample_ratio=1
 activation=identity # Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
 deep_supervision=1
-cfg=/media/prostate/20210315_LOWB/DM-Count_modify/DM-Count/models/hrnet_seg_ocr/experiments/test.yaml
+cfg=/media/prostate/20210331_PDL1/segmentation/DM-Count/models/hrnet_seg_ocr/experiments/test.yaml
 loss=ce
 
 visdom_server=http://localhost # if None, nothing will be sent to server.
@@ -24,20 +24,19 @@ neptune_tag=('me' 'seg')
 
 
 
-
-## change se resnext
+### change se resnext
 activation=identity # Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
-neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'deep_supervision')
+neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'copy_paste' 'deep_supervision' 'ssl' 'spm_drop_rate_0.2')
 #neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'deep_supervision' 'copy_paste' 'ocr')
 encoder_name=se_resnext50_32x4d # vgg19_bn hrnet_seg hrnet_seg_ocr
 batch_size=2
 deep_supervision=1
 use_albumentation=1
-use_copy_paste=0
+use_copy_paste=1
 #downsample_ratio=2 # batch_size 6
 downsample_ratio=1 # batch_size 4
 use_ocr=0
-max_epoch=25
+max_epoch=50
 #loss=ce
 #loss=dice
 #loss=focal

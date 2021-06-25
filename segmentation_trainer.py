@@ -312,7 +312,7 @@ class SegTrainer(object):
         #T_0=35 #Number of iterations for the first restart.
         #T_mult=1 # A factor increases after a restart. Default: 1.
         eta_min=1e-5 #Minimum learning rate. Default: 0.
-        args.t_0 = int(args.max_epoch)
+        args.t_0 = int(args.max_epoch / 2)
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, eta_min)
 
         # dataset
@@ -464,21 +464,6 @@ class SegTrainer(object):
                         loss = _loss + torch.stack(deep_sup_loss).sum()
                         del _loss, deep_sup_loss
 
-                        if self.args.use_ssl: # semi-supervised
-                            output_ul_main, outputs_ul_aux = self.model(x_ul, unsupervised=True)
-                            targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
-                            loss_unsup = []
-                            for aux_out in outputs_ul_aux: # aux decoder outputs
-                                loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=False))
-                            del output_ul_main, outputs_ul_aux
-                            # Compute the unsupervised loss
-                            loss_unsup = sum(loss_unsup) / len(loss_unsup)
-                            weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)
-                            loss_unsup = loss_unsup * weight_u
-                            
-                            loss = loss + loss_unsup
-                            del loss_unsup
-
                 else:
                     if self.args.use_ocr:
                         outputs, out_ocr = self.model(inputs)
@@ -492,6 +477,23 @@ class SegTrainer(object):
                         else:
                             _loss = self.criterion(outputs, masks)
                         loss = _loss
+
+
+                if self.args.use_ssl: # semi-supervised
+                    output_ul_main, outputs_ul_aux = self.model(x_ul, unsupervised=True)
+                    #targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
+                    targets = output_ul_main.detach() # main decoder output
+                    loss_unsup = []
+                    for aux_out in outputs_ul_aux: # aux decoder outputs
+                        loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=True))
+                    del output_ul_main, outputs_ul_aux
+                    # Compute the unsupervised loss
+                    loss_unsup = sum(loss_unsup) / len(loss_unsup)
+                    weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)
+                    loss_unsup = loss_unsup * weight_u
+
+                    loss = loss + loss_unsup
+                    del loss_unsup
 
                 epoch_loss.update(loss.item(), N)
 

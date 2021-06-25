@@ -201,6 +201,7 @@ class CopyPaste(A.DualTransform):
         #    alpha += mask > 0
         #alpha = np.where((mask == 2) | (mask == 3),1,0) # 現状、とりあえず cancer(idx color=2) or 気管支線(idx color=3) のみをペーストする
         alpha = np.where((mask == 1) | (mask == 2) | (mask == 3),1,0) # 背景以外をペーストする
+        #alpha = np.where((mask == 2),1,0) # cancer(idx color=2) のみをペーストする
 
         return {
             #"param_masks": params["masks"],
