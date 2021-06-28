@@ -104,13 +104,13 @@ class ScalePyramidModule(nn.Module):
         super(ScalePyramidModule, self).__init__()
         #self.assp = ASPP(inplanes_aspp, output_stride=16, BatchNorm=SynchronizedBatchNorm2d)
         self.assp = ASPP(inplanes_aspp, output_stride=16, BatchNorm=nn.BatchNorm2d)
-        self.can = ContextualModule(inplanes_can, inplanes_can)
+#        self.can = ContextualModule(inplanes_can, inplanes_can)
         
     def forward(self, input):
         ret = []
         for i, tensor in enumerate(input):
-            if i == 3: # 1/2^4 = 1/8
-                tensor = self.can(input[i])
+#            if i == 3: # 1/2^4 = 1/8
+#                tensor = self.can(input[i])
             if i == 4: # 1/2^5 = 1/16
                 tensor = self.assp(input[i])
             ret.append(tensor)

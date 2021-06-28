@@ -28,180 +28,178 @@ visdom_server=http://localhost # if None, nothing will be sent to server.
 neptune_tag=('me' 'detect')
 
 
-### change
-#lr=5e-4
-#neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'spm_drop_rate_0.2')
-#encoder_name=vgg19_bn # vgg19_bn \
-#reg=1
-#wot=0.1
-#wtv=0.7
-#batch_size=4 # 4 if deep_supervision, 2 if use_ssl, 4 if normal
-#deep_supervision=0
-#use_albumentation=1
-#downsample_ratio=1 # batch_size 4
-#max_epoch=100
-#use_ssl=0
-#data_dir_ul=/media/prostate/20210331_PDL1/data/ROI/20210428_forSatou2/dako準拠染色_日本スライド/semi_supervised_seg_x40_512x512/train/dako準拠染色_日本スライド
-#batch_size_ul=2
-#unsupervised_w=30
-#rampup_ends=0.2
-#
-#
-#python3 train.py \
-#--project $project \
-#--neptune-tag ${neptune_tag[@]} \
-#--dataset $datasetname \
-#--data-dir $datadir \
-#--device 0 \
-#--lr $lr \
-#--max-epoch $max_epoch \
-#--val-epoch $val_epoch \
-#--val-start $val_start \
-#--batch-size $batch_size \
-#--num-workers $num_workers \
-#--input-size $input_size \
-#--crop-size $crop_size \
-#--visdom-server $visdom_server \
-#--encoder_name $encoder_name \
-#--classes 1 \
-#--scale_pyramid_module 1 \
-#--use_attention_branch 0 \
-#--use_albumentation $use_albumentation \
-#--downsample-ratio $downsample_ratio \
-#--activation $activation \
-#--deep_supervision $deep_supervision \
-#--cfg $cfg \
-#--reg $reg \
-#--num-of-iter-in-ot $iter_ot \
-#--wot $wot \
-#--wtv $wtv \
-#--weight-decay $weight_decay \
-#--use_ssl $use_ssl \
-#--data_dir_ul $data_dir_ul \
-#--batch-size-ul $batch_size_ul \
-#--rampup_ends $rampup_ends \
-#--unsupervised_w $unsupervised_w
-#
-#
-#
-#
-#
-### change
-#lr=5e-4
-#neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.2')
-#encoder_name=se_resnext50_32x4d # vgg19_bn \
-#reg=1
-#wot=0.1
-#wtv=0.7
-#batch_size=4 # 4 if deep_supervision, 2 if use_ssl, 4 if normal
-#deep_supervision=0
-#use_albumentation=1
-#downsample_ratio=1 # batch_size 4
-#max_epoch=100
-#use_ssl=0
-#data_dir_ul=/media/prostate/20210331_PDL1/data/ROI/20210428_forSatou2/dako準拠染色_日本スライド/semi_supervised_seg_x40_512x512/train/dako準拠染色_日本スライド
-#batch_size_ul=2
-#unsupervised_w=30
-#rampup_ends=0.2
-#
-#
-#
-#python3 train.py \
-#--project $project \
-#--neptune-tag ${neptune_tag[@]} \
-#--dataset $datasetname \
-#--data-dir $datadir \
-#--device 0 \
-#--lr $lr \
-#--max-epoch $max_epoch \
-#--val-epoch $val_epoch \
-#--val-start $val_start \
-#--batch-size $batch_size \
-#--num-workers $num_workers \
-#--input-size $input_size \
-#--crop-size $crop_size \
-#--visdom-server $visdom_server \
-#--encoder_name $encoder_name \
-#--classes 1 \
-#--scale_pyramid_module 1 \
-#--use_attention_branch 0 \
-#--use_albumentation $use_albumentation \
-#--downsample-ratio $downsample_ratio \
-#--activation $activation \
-#--deep_supervision $deep_supervision \
-#--cfg $cfg \
-#--reg $reg \
-#--num-of-iter-in-ot $iter_ot \
-#--wot $wot \
-#--wtv $wtv \
-#--weight-decay $weight_decay \
-#--use_ssl $use_ssl \
-#--data_dir_ul $data_dir_ul \
-#--batch-size-ul $batch_size_ul \
-#--rampup_ends $rampup_ends \
-#--unsupervised_w $unsupervised_w
-#
-#
-#
-### change
-#lr=5e-4
-#neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.2')
-#encoder_name=se_resnext50_32x4d # vgg19_bn \
-#reg=1
-#wot=0.1
-#wtv=0.7
-#batch_size=4 # 4 if deep_supervision, 2 if use_ssl, 4 if normal
-#deep_supervision=1
-#use_albumentation=1
-#downsample_ratio=1 # batch_size 4
-#max_epoch=100
-#use_ssl=0
-#data_dir_ul=/media/prostate/20210331_PDL1/data/ROI/20210428_forSatou2/dako準拠染色_日本スライド/semi_supervised_seg_x40_512x512/train/dako準拠染色_日本スライド
-#batch_size_ul=2
-#unsupervised_w=30
-#rampup_ends=0.2
-#
-#
-#
-#python3 train.py \
-#--project $project \
-#--neptune-tag ${neptune_tag[@]} \
-#--dataset $datasetname \
-#--data-dir $datadir \
-#--device 0 \
-#--lr $lr \
-#--max-epoch $max_epoch \
-#--val-epoch $val_epoch \
-#--val-start $val_start \
-#--batch-size $batch_size \
-#--num-workers $num_workers \
-#--input-size $input_size \
-#--crop-size $crop_size \
-#--visdom-server $visdom_server \
-#--encoder_name $encoder_name \
-#--classes 1 \
-#--scale_pyramid_module 1 \
-#--use_attention_branch 0 \
-#--use_albumentation $use_albumentation \
-#--downsample-ratio $downsample_ratio \
-#--activation $activation \
-#--deep_supervision $deep_supervision \
-#--cfg $cfg \
-#--reg $reg \
-#--num-of-iter-in-ot $iter_ot \
-#--wot $wot \
-#--wtv $wtv \
-#--weight-decay $weight_decay \
-#--use_ssl $use_ssl \
-#--data_dir_ul $data_dir_ul \
-#--batch-size-ul $batch_size_ul \
-#--rampup_ends $rampup_ends \
-#--unsupervised_w $unsupervised_w
+## change
+lr=5e-4
+neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'spm_drop_rate_0.1')
+encoder_name=vgg19_bn # vgg19_bn \
+reg=1
+wot=0.1
+wtv=0.7
+batch_size=4 # 4 if deep_supervision, 2 if use_ssl, 4 if normal
+deep_supervision=0
+use_albumentation=1
+downsample_ratio=1 # batch_size 4
+max_epoch=100
+use_ssl=0
+data_dir_ul=/media/prostate/20210331_PDL1/data/ROI/20210428_forSatou2/dako準拠染色_日本スライド/semi_supervised_seg_x40_512x512/train/dako準拠染色_日本スライド
+batch_size_ul=2
+unsupervised_w=30
+rampup_ends=0.2
+
+
+python3 train.py \
+--project $project \
+--neptune-tag ${neptune_tag[@]} \
+--dataset $datasetname \
+--data-dir $datadir \
+--device 0 \
+--lr $lr \
+--max-epoch $max_epoch \
+--val-epoch $val_epoch \
+--val-start $val_start \
+--batch-size $batch_size \
+--num-workers $num_workers \
+--input-size $input_size \
+--crop-size $crop_size \
+--visdom-server $visdom_server \
+--encoder_name $encoder_name \
+--classes 1 \
+--scale_pyramid_module 1 \
+--use_attention_branch 0 \
+--use_albumentation $use_albumentation \
+--downsample-ratio $downsample_ratio \
+--activation $activation \
+--deep_supervision $deep_supervision \
+--cfg $cfg \
+--reg $reg \
+--num-of-iter-in-ot $iter_ot \
+--wot $wot \
+--wtv $wtv \
+--weight-decay $weight_decay \
+--use_ssl $use_ssl \
+--data_dir_ul $data_dir_ul \
+--batch-size-ul $batch_size_ul \
+--rampup_ends $rampup_ends \
+--unsupervised_w $unsupervised_w
+
 
 
 ## change
 lr=5e-4
-neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.2')
+neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.1')
+encoder_name=se_resnext50_32x4d # vgg19_bn \
+reg=1
+wot=0.1
+wtv=0.7
+batch_size=4 # 4 if deep_supervision, 2 if use_ssl, 4 if normal
+deep_supervision=0
+use_albumentation=1
+downsample_ratio=1 # batch_size 4
+max_epoch=100
+use_ssl=0
+data_dir_ul=/media/prostate/20210331_PDL1/data/ROI/20210428_forSatou2/dako準拠染色_日本スライド/semi_supervised_seg_x40_512x512/train/dako準拠染色_日本スライド
+batch_size_ul=2
+unsupervised_w=30
+rampup_ends=0.2
+
+
+
+python3 train.py \
+--project $project \
+--neptune-tag ${neptune_tag[@]} \
+--dataset $datasetname \
+--data-dir $datadir \
+--device 0 \
+--lr $lr \
+--max-epoch $max_epoch \
+--val-epoch $val_epoch \
+--val-start $val_start \
+--batch-size $batch_size \
+--num-workers $num_workers \
+--input-size $input_size \
+--crop-size $crop_size \
+--visdom-server $visdom_server \
+--encoder_name $encoder_name \
+--classes 1 \
+--scale_pyramid_module 1 \
+--use_attention_branch 0 \
+--use_albumentation $use_albumentation \
+--downsample-ratio $downsample_ratio \
+--activation $activation \
+--deep_supervision $deep_supervision \
+--cfg $cfg \
+--reg $reg \
+--num-of-iter-in-ot $iter_ot \
+--wot $wot \
+--wtv $wtv \
+--weight-decay $weight_decay \
+--use_ssl $use_ssl \
+--data_dir_ul $data_dir_ul \
+--batch-size-ul $batch_size_ul \
+--rampup_ends $rampup_ends \
+--unsupervised_w $unsupervised_w
+
+
+
+## change
+lr=5e-4
+neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.1')
+encoder_name=se_resnext50_32x4d # vgg19_bn \
+reg=1
+wot=0.1
+wtv=0.7
+batch_size=4 # 4 if deep_supervision, 2 if use_ssl, 4 if normal
+deep_supervision=1
+use_albumentation=1
+downsample_ratio=1 # batch_size 4
+max_epoch=100
+use_ssl=0
+data_dir_ul=/media/prostate/20210331_PDL1/data/ROI/20210428_forSatou2/dako準拠染色_日本スライド/semi_supervised_seg_x40_512x512/train/dako準拠染色_日本スライド
+batch_size_ul=2
+unsupervised_w=30
+rampup_ends=0.2
+
+
+
+python3 train.py \
+--project $project \
+--neptune-tag ${neptune_tag[@]} \
+--dataset $datasetname \
+--data-dir $datadir \
+--device 0 \
+--lr $lr \
+--max-epoch $max_epoch \
+--val-epoch $val_epoch \
+--val-start $val_start \
+--batch-size $batch_size \
+--num-workers $num_workers \
+--input-size $input_size \
+--crop-size $crop_size \
+--visdom-server $visdom_server \
+--encoder_name $encoder_name \
+--classes 1 \
+--scale_pyramid_module 1 \
+--use_attention_branch 0 \
+--use_albumentation $use_albumentation \
+--downsample-ratio $downsample_ratio \
+--activation $activation \
+--deep_supervision $deep_supervision \
+--cfg $cfg \
+--reg $reg \
+--num-of-iter-in-ot $iter_ot \
+--wot $wot \
+--wtv $wtv \
+--weight-decay $weight_decay \
+--use_ssl $use_ssl \
+--data_dir_ul $data_dir_ul \
+--batch-size-ul $batch_size_ul \
+--rampup_ends $rampup_ends \
+--unsupervised_w $unsupervised_w
+
+
+## change
+lr=5e-4
+neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.1')
 encoder_name=se_resnext50_32x4d # vgg19_bn \
 reg=1
 wot=0.1

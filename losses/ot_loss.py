@@ -11,7 +11,9 @@ class OT_Loss(Module):
         self.device = device
         self.norm_cood = norm_cood
         self.num_of_iter_in_ot = num_of_iter_in_ot
-        self.reg = reg
+        self.reg = reg # final
+        self.reg_start = 20 # start
+        self.decrease = 5 # decrease rate for reg per epoch
 
         # coordinate is same to image space, set to constant since crop size is same
         self.cood = torch.arange(0, c_size, step=stride,
@@ -23,7 +25,7 @@ class OT_Loss(Module):
         self.output_size = self.cood.size(1)
 
 
-    def forward(self, normed_density, unnormed_density, points):
+    def forward(self, normed_density, unnormed_density, points, epoch):
         batch_size = normed_density.size(0)
         assert len(points) == batch_size
         assert self.output_size == normed_density.size(2)
@@ -47,7 +49,9 @@ class OT_Loss(Module):
                 source_prob = normed_density[idx][0].view([-1]).detach()
                 target_prob = (torch.ones([len(im_points)]) / len(im_points)).to(self.device)
                 # use sinkhorn to solve OT, compute optimal beta.
-                P, log = sinkhorn(target_prob, source_prob, dis, self.reg, maxIter=self.num_of_iter_in_ot, log=True)
+                reg = torch.max(torch.tensor(int(self.reg_start-epoch*self.decrease)), torch.tensor(self.reg))
+                P, log = sinkhorn(target_prob, source_prob, dis, reg, maxIter=self.num_of_iter_in_ot, log=True)
+#                P, log = sinkhorn(target_prob, source_prob, dis, self.reg, maxIter=self.num_of_iter_in_ot, log=True)
                 beta = log['beta'] # size is the same as source_prob: [#cood * #cood]
                 ot_obj_values += torch.sum(normed_density[idx] * beta.view([1, self.output_size, self.output_size]))
                 # compute the gradient of OT loss to predicted density (unnormed_density).

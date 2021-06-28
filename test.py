@@ -12,6 +12,7 @@ start = time.time()
 
 parser = argparse.ArgumentParser(description='Test ')
 parser.add_argument('--device', default='0', help='assign device')
+parser.add_argument('--gpu', default='1', help='gpu or cpu')
 parser.add_argument('--crop-size', type=int, default=512,
                     help='the crop size of the train image')
 parser.add_argument('--model-path', type=str, default='pretrained_models/model_qnrf.pth',
@@ -30,6 +31,8 @@ parser.add_argument('--scale_pyramid_module', type=int, default=0,)
 parser.add_argument('--use_attention_branch', type=int, default=0,) 
 parser.add_argument('--downsample-ratio', type=int, default=1)
 parser.add_argument('--input-size', type=int, default=512) 
+parser.add_argument('--deep_supervision', type=int, default=0) 
+parser.add_argument('--use_ssl', type=int, default=0) 
 parser.add_argument('--cfg', type=str, default='')
 parser.add_argument('opts',
                     help="Modify config options using the command-line",
@@ -168,8 +171,11 @@ def paint_center(args, img, liklihoodmap, taus=[-1], org_img=None, name=None):
         cv2.imwrite(os.path.join(args.pred_density_map_path, str(name) + f'painted_on_estmap_tau_{round(tau, 4)}_dab.jpg'), img_draw_DAB[:,:,::-1])
         
 
-os.environ['CUDA_VISIBLE_DEVICES'] = args.device  # set vis gpu
-device = torch.device('cuda')
+if args.gpu:
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.device  # set vis gpu
+    device = torch.device(int(args.device))
+else:
+    device = torch.device('cpu')
 
 model_path = args.model_path
 crop_size = args.crop_size
@@ -214,7 +220,7 @@ model.eval()
 if args.test_type == 'val': # show gt overlay 
     image_errs = []
     #for inputs, count, name in dataloader:
-    for inputs, keypoints, name in dataloader:
+    for inputs, keypoints, gt_discrete, name in dataloader:
         inputs = inputs.to(device)
         assert inputs.size(0) == 1, 'the batch size should equal to 1'
         with torch.set_grad_enabled(False):
@@ -328,7 +334,11 @@ elif args.test_type in ['val_no_gt', 'test_no_gt']: # without gt
         inputs = inputs.to(device)
         assert inputs.size(0) == 1, 'the batch size should equal to 1'
         with torch.set_grad_enabled(False):
-            outputs, _ = model(inputs)
+            if args.deep_supervision:
+                outputs, intermediates = model(inputs)
+                del intermediates
+            else:
+                outputs = model(inputs)
 
         print(name[0],  torch.sum(outputs).item())
     
@@ -353,12 +363,12 @@ elif args.test_type in ['val_no_gt', 'test_no_gt']: # without gt
             if (vis_img.shape[:2]) != (org_img.shape[:2]):
                 vis_img = vis_img.resize(org_img.shape[:2])
             # overlay
-            overlay = np.uint8((org_img/1.7) + np.uint8(vis_img/2.5)) # RGB
+            overlay = np.uint8((org_img/2) + np.uint8(vis_img/2)) # RGB
             #cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + '.jpg'), cv2.cvtColor(img_w_heatmap.transpose(1,2,0).astype(np.uint8), cv2.COLOR_RGB2BGR))
             cv2.imwrite(os.path.join(args.pred_density_map_path, str(name[0]) + '.jpg'), overlay.astype(np.uint8)[:,:,::-1])
  
             # detect/draw center point
-            paint_center(args, overlay, vis_img2, taus=[-1], org_img=org_img, name=name[0])
+            paint_center(args, overlay, vis_img2.transpose(1,2,0), taus=[-1], org_img=org_img, name=name[0])
             #paint_center(args, img_w_heatmap, vis_img2, taus=[0.47])
 
 

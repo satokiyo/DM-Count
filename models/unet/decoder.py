@@ -135,7 +135,7 @@ class UnetDecoder(nn.Module):
             self.convs=[nn.Sequential(
                           nn.Conv2d(och, self.n_class, 3, stride=1, padding=1),
                           nn.ReLU(inplace=True),
-                        ).cuda() for och in _out_channels[::-1]]
+                        ) for och in _out_channels[::-1]]
  
 
 
@@ -172,7 +172,7 @@ class UnetDecoder(nn.Module):
             for out_stack in out_stack_deep_sup[1:]: # (256*256*32ch ->...-> 16*16*512ch) !! Final resolution outputはdeep supervisionでは不要 !!
                 # 3-by-3 conv2d --> upsampling --> sigmoid output activation
                 pool_size = 2**(i)
-                hx = self.convs[i](out_stack)
+                hx = self.convs[i].to(x.device)(out_stack)
                 del out_stack
                 hx = F.interpolate(hx, scale_factor=pool_size, mode="bilinear")
                 # collecting deep supervision tensors

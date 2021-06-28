@@ -69,7 +69,8 @@ class Trainer(object):
         #T_0=35 #Number of iterations for the first restart.
         #T_mult=1 # A factor increases after a restart. Default: 1.
         eta_min=1e-5 #Minimum learning rate. Default: 0.
-        args.t_0 = int(args.max_epoch // 2)
+        #args.t_0 = int(args.max_epoch // 2)
+        args.t_0 = 10
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, eta_min)
 
         # dataset
@@ -257,7 +258,7 @@ class Trainer(object):
                 outputs_normed = outputs / (mu_sum + 1e-6)
 
                 # Compute OT loss.
-                ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points)
+                ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points, self.epoch)
                 ot_loss = ot_loss * self.args.wot
                 ot_obj_value = ot_obj_value * self.args.wot
                 epoch_ot_loss.update(ot_loss.item(), N)
@@ -291,7 +292,7 @@ class Trainer(object):
                         B, C, H, W = i.size()
                         mu_sum = i.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
                         outputs_normed = i / (mu_sum + 1e-6)
-                        ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, i, points)
+                        ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, i, points, self.epoch)
                         del wd, ot_obj_value
                         ot_loss = ot_loss * w_each
                         deep_sup_loss.append(ot_loss)
@@ -301,10 +302,11 @@ class Trainer(object):
                 if self.args.use_ssl: # semi-supervised
                     output_ul_main, outputs_ul_aux = self.model(x_ul, unsupervised=True)
                     del x_ul
-                    targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
+                    #targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
+                    targets = output_ul_main.detach() # main decoder output
                     loss_unsup = []
                     for aux_out in outputs_ul_aux: # aux decoder outputs
-                        loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=False))
+                        loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=True))
                     # Compute the unsupervised loss
                     loss_unsup = sum(loss_unsup) / len(loss_unsup)
                     weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)
@@ -423,14 +425,16 @@ class Trainer(object):
         epoch_start = time.time()
         self.model.eval()  # Set model to evaluate mode
         epoch_ot_loss = []
+        epoch_tv_loss = []
         epoch_ot_obj_value = []
         epoch_wd = []
         epoch_res = []
         stream = tqdm(self.dataloaders['val'])
-        for step, (inputs, points, name) in enumerate(stream):
+        for step, (inputs, points, gt_discrete, name) in enumerate(stream):
             inputs = inputs.to(self.device)
             gd_count = np.array([len(p) for p in points], dtype=np.float32)
             points = [p.to(self.device) for p in points]
+            gt_discrete = gt_discrete.to(self.device)
             assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
             with torch.set_grad_enabled(False):
                 #x = self.model(inputs)
@@ -451,7 +455,7 @@ class Trainer(object):
                 outputs_normed = outputs / (mu_sum + 1e-6)
 
                 # Compute OT loss.
-                ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points)
+                ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points, self.epoch)
                 ot_loss = ot_loss * self.args.wot
                 ot_obj_value = ot_obj_value * self.args.wot
                 epoch_ot_loss.append(ot_loss.item())
@@ -462,6 +466,14 @@ class Trainer(object):
                 res = count - torch.sum(outputs).item()
                 #res = count[0].item() - torch.sum(outputs).item()
                 epoch_res.append(res)
+                # Compute TV loss.
+                gd_count_tensor = torch.from_numpy(gd_count).float().to(self.device).unsqueeze(1).unsqueeze(
+                    2).unsqueeze(3)
+                gt_discrete_normed = gt_discrete / (gd_count_tensor + 1e-6)
+                tv_loss = (self.tv_loss(outputs_normed, gt_discrete_normed).sum(1).sum(1).sum(
+                    1) * torch.from_numpy(gd_count).float().to(self.device)).mean(0) * self.args.wtv
+                epoch_tv_loss.append(tv_loss.item())
+ 
 
             # show image
             if step % 10 == 0:
@@ -492,7 +504,8 @@ class Trainer(object):
             wd = np.mean(np.array(epoch_wd))
             mse = np.sqrt(np.mean(np.square(np.array(epoch_res))))
             mae = np.mean(np.abs(epoch_res))
-            stream.set_description('Epoch {} Val, MSE: {:.2f} MAE: {:.2f} OT Loss: {:.2f} OT obj value: {:.2f} Wass Distance: {:.2f}'.format(self.epoch, mse, mae, ot_loss, ot_obj, wd))
+            tv_loss = np.mean(np.array(epoch_tv_loss))
+            stream.set_description('Epoch {} Val, MSE: {:.2f} MAE: {:.2f} OT Loss: {:.2f} OT obj value: {:.2f} Wass Distance: {:.2f} TV Loss: {:.2f}'.format(self.epoch, mse, mae, ot_loss, ot_obj, wd, tv_loss))
 
         #epoch_res = np.array(epoch_res)
         #mse = np.sqrt(np.mean(np.square(epoch_res)))
@@ -520,6 +533,7 @@ class Trainer(object):
         self.run['val/OT Loss'].log(ot_loss)
         self.run['val/Wass Distance'].log(ot_obj)
         self.run['val/OT obj value'].log(wd)
+        self.run['val/TV Loss'].log(tv_loss)
 
 
     def data_check(self):

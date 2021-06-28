@@ -293,7 +293,11 @@ class CellDataset(Base):
             self.gt_list = sorted(list(Path(self.root_path).glob("**/*.mat")))
             im_list = []
             for gt in self.gt_list:
-                img_path = str(gt).split('.')[0] + '.jpg'
+                if '_pred' in str(gt):
+                    continue
+                p = Path(gt)
+                img_path = str(p.parent) + '/' +  str(p.stem) + '.jpg'
+                #img_path = str(gt).split('.')[0] + '.jpg'
                 #img_path = str(gt).split('.')[0] + '.jpg_pred.jpg'
                 im_list.append(img_path)
             self.im_list = im_list
@@ -343,9 +347,13 @@ class CellDataset(Base):
 
     def __getitem__(self, item):
         img_path = self.im_list[item]
-        name = str(os.path.basename(img_path)).split('.')[0]
+        #name = str(os.path.basename(img_path)).split('.')[0]
+        p = Path(img_path)
+        name = str(p.stem)
+ 
         #gd_path = self.gt_list[item]
-        gd_path = str(img_path).split('.')[0] + '.mat'
+        #gd_path = str(img_path).split('.')[0] + '.mat'
+        gd_path = str(p.parent) + '/' +  str(p.stem) + '.mat'
         img = Image.open(img_path).convert('RGB')
 
         if self.method == 'train':
@@ -357,7 +365,15 @@ class CellDataset(Base):
             #img, keypoints = self.val_transform(img, keypoints)
             img = self.trans(img)
             #return img, len(keypoints), name
-            return img, torch.from_numpy(np.array(keypoints).copy()).float(), name
+            h = img.size(1)
+            w = img.size(2)
+            gt_discrete = gen_discrete_map(h, w, keypoints)
+            down_w = w // self.d_ratio
+            down_h = h // self.d_ratio
+            gt_discrete = gt_discrete.reshape([down_h, self.d_ratio, down_w, self.d_ratio]).sum(axis=(1, 3))
+            assert np.sum(gt_discrete) == len(keypoints)
+            gt_discrete = np.expand_dims(gt_discrete, 0)
+            return img, torch.from_numpy(np.array(keypoints).copy()).float(), torch.from_numpy(gt_discrete.copy()).float(), name
             #return img, keypoints, name
 #        elif self.method == 'val_with_gt':
 #            keypoints = sio.loadmat(gd_path)['image_info']
