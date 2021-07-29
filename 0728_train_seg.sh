@@ -1,6 +1,6 @@
 #!/bin/bash
 datasetname=classification
-datadir=/media/prostate/20210331_PDL1/data/annotation/segmentation_gt/20210524forSatou_PDL1_x10_512x512_0531_annotate
+datadir=/media/HDD2/20210728_colon_classification/data/ROI/x10_330x330/train
 lr=1e-3
 weight_decay=1e-5
 resume=''
@@ -25,7 +25,7 @@ neptune_tag=('colon' 'classification')
 
 ### change se resnext
 
-encoder_name=se_resnext50_32x4d # vgg19_bn hrnet_seg hrnet_seg_ocr
+encoder_name=mobilenet_v2 # vgg19_bn hrnet_seg hrnet_seg_ocr
 use_albumentation=1
 use_copy_paste=1
 #loss=ce
@@ -38,11 +38,16 @@ use_copy_paste=1
 loss=nrdice
 #loss=abCE
 
-neptune_tag=(${neptune_tag[@]} ${encoder_name} albumentation-${use_albumentation} copy_paste-${} loss-${loss} max_epoch-${max_epoch})
+#neptune_tag+=${encoder_name}
+#neptune_tag+=albumentation-${use_albumentation}
+#neptune_tag+=copy_paste-${} loss-${loss} max_epoch-${max_epoch})
+#neptune_tag+=${encoder_name} albumentation-${use_albumentation} copy_paste-${} loss-${loss} max_epoch-${max_epoch})
+#neptune_tag+=${encoder_name} albumentation-${use_albumentation} copy_paste-${} loss-${loss} max_epoch-${max_epoch})
+neptune_tag=("${neptune_tag[@]}" ${encoder_name} albumentation-${use_albumentation} copy_paste-${use_copy_paste} loss-${loss} max_epoch-${max_epoch})
 
 python3 train.py \
 --neptune_workspace_name $neptune_workspace_name \
---neptune_project_name $neptune_project_name \ 
+--neptune_project_name $neptune_project_name \
 --neptune_api_token $neptune_api_token \
 --neptune-tag ${neptune_tag[@]} \
 --dataset $datasetname \

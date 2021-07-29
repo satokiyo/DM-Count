@@ -17,26 +17,13 @@ import utils.log_utils as log_utils
 import utils.utils as utils
 
 #from datasets.crowd import Crowd_qnrf, Crowd_nwpu, Crowd_sh, CellDataset
-from datasets.segmentation_data import SegDataset
+from datasets.classification_data import ClassificationDataset
 from models.classification_model import ClassificationModel
-
-from losses.cross_entropy import CrossEntropy, OhemCrossEntropy
-from losses.dice import DiceLoss
-from losses.focal import FocalLoss
-from losses.jaccard import JaccardLoss
-from losses.lovasz import LovaszLoss
-from losses.soft_ce import SoftCrossEntropyLoss
-from losses.wing import WingLoss
-from losses.combo import ComboLoss
-from losses.nrdice import NoiseRobustDiceLoss
-from losses.losses import abCE_loss
- 
 
 import neptune.new as neptune
 from neptune.new.types import File
 
 from PIL import Image
-from itertools import cycle
 import copy
 
 class ClassificationTrainer(object):
@@ -56,245 +43,10 @@ class ClassificationTrainer(object):
             raise Exception("gpu is not available")
 
         # Model
-        self.model = ClassificationModel(args)
-        if args.use_ocr:
-            use_ocr=True
-    
-            #from kiunet import kiunet, densekiunet, reskiunet
-            #self.model = kiunet()
-    
-            #from models.hrnet.models import seg_hrnet, seg_hrnet_ocr
-            #from models.hrnet.config import config
-            #from models.hrnet.config import update_config
-            #update_config(config, args)
-            #self.model = seg_hrnet.get_seg_model(config)
-            #self.model = seg_hrnet_ocr.get_seg_model(config)
-
-        self.model.to(self.device)
+        self.model = ClassificationModel(args).to(self.device)
 
         # criterion
-        # ce dice softce focal jaccard lovasz wing combo mae nrdice
-        if args.loss == 'ce':
-            self.criterion = CrossEntropy(ignore_label=-1,  # DiceLoss
-                                          weight=None).to(self.device)
-            if use_ocr:
-                self.criterion_ocr = CrossEntropy(ignore_label=-1,
-                                              weight=None,
-                                              use_ocr=use_ocr,
-                                              w_loss=1.,
-                                              w_loss_ocr=0.1).to(self.device)
-
-            ## Focal lossと類似。Top70%の勾配のみ使うことでonline hard example miningをする。若干Focalの方が良いらしい
-            #self.criterion = OhemCrossEntropy(ignore_label=-1,
-            #                                  thres=config.LOSS.OHEMTHRES,
-            #                                  min_kept=config.LOSS.OHEMKEEP,
-            #                                  weight=None).to(self.device)
-
-        elif args.loss == 'dice':
-            self.criterion = DiceLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               classes=None, # all channel contribute for loss
-                                               log_loss=False,
-                                               from_logits=True,
-                                               smooth=0.0,
-                                               ignore_index=None,).to(self.device)
- 
-            if use_ocr:
-                self.criterion_ocr = DiceLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               classes=None, # all channel contribute for loss
-                                               log_loss=False,
-                                               from_logits=True,
-                                               smooth=0.0,
-                                               ignore_index=None,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-        elif args.loss == 'focal':
-            self.criterion = FocalLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               alpha = None, # alpha: Prior probability of having positive value in target.
-                                               gamma = 2., # gamma: Power factor for dampening weight (focal strength).
-                                               ignore_index=None,).to(self.device)
- 
- 
-            if use_ocr:
-                self.criterion_ocr = FocalLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               alpha = None, # alpha: Prior probability of having positive value in target.
-                                               gamma = 2., # gamma: Power factor for dampening weight (focal strength).
-                                               ignore_index=None,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-
-        elif args.loss == 'jaccard':
-            self.criterion = JaccardLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               classes=None, # all channel contribute for loss
-                                               log_loss=False,
-                                               from_logits=True,
-                                               smooth=0.0,).to(self.device)
- 
-            if use_ocr:
-                self.criterion_ocr = JaccardLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               classes=None, # all channel contribute for loss
-                                               log_loss=False,
-                                               from_logits=True,
-                                               smooth=0.0,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-        elif args.loss == 'lovasz':
-            self.criterion = LovaszLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               per_image=False, #  If True loss computed per each image and then averaged, else computed per whole batch
-                                               from_logits=True,
-                                               ignore_index=None,).to(self.device)
-
-            if use_ocr:
-                self.criterion_ocr = LovaszLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               per_image=False, #  If True loss computed per each image and then averaged, else computed per whole batch
-                                               from_logits=True,
-                                               ignore_index=None,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-
-        elif args.loss == 'softce':
-            self.criterion = SoftCrossEntropyLoss(
-                                               reduction = "mean",
-                                               smooth_factor = 0.1,
-                                               ignore_index = -100,
-                                               dim = 1,).to(self.device)
- 
- 
-            if use_ocr:
-                self.criterion_ocr = SoftCrossEntropyLoss(
-                                               reduction = "mean",
-                                               smooth_factor = None,
-                                               ignore_index = -100,
-                                               dim = 1,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-
-        elif args.loss == 'wing':
-            self.criterion = WingLoss(
-                                               mode='multiclass',
-                                               reduction = "mean",
-                                               ignore_index = -100,
-                                               width = 5,
-                                               curvature = 0.5,).to(self.device)
- 
-            if use_ocr:
-                self.criterion_ocr = WingLoss(
-                                               mode='multiclass',
-                                               reduction = "mean",
-                                               ignore_index = -100,
-                                               width = 5,
-                                               curvature = 0.5,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-
-        elif args.loss == 'combo':
-            self.criterion = ComboLoss(
-                                               loss_weight=1.0,
-                                               smooth=1,
-                                               alpha=0.5,
-                                               ce_ratio=0.5,
-                                               reduction='mean',
-                                               class_weight=None, 
-                                               use_sigmoid=True,).to(self.device)
-
-            if use_ocr:
-                self.criterion_ocr = ComboLoss(
-                                               loss_weight=1.0,
-                                               smooth=1,
-                                               alpha=0.5,
-                                               ce_ratio=0.5,
-                                               reduction='mean',
-                                               class_weight=None, 
-                                               use_sigmoid=True,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-        elif args.loss == 'abCE':
-            self.criterion = None # abCEロスはsemi-supervisedモードのsupervise lossのみで使用する。下で設定。
-
-
-        elif args.loss == 'mae':
-            pass
-
-
-        elif args.loss == 'nrdice':
-            self.criterion = NoiseRobustDiceLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               classes=None, # all channel contribute for loss
-                                               log_loss=False,
-                                               from_logits=True,
-                                               smooth=0.0,
-                                               gamma=1.5,
-                                               ignore_index=None,).to(self.device)
- 
-            if use_ocr:
-                self.criterion_ocr = NoiseRobustDiceLoss(
-                                               mode='multiclass',  # mode: Loss mode 'binary', 'multiclass' or 'multilabel'
-                                               classes=None, # all channel contribute for loss
-                                               log_loss=False,
-                                               from_logits=True,
-                                               smooth=0.0,
-                                               gamma=1.5,
-                                               ignore_index=None,
-                                               use_ocr=use_ocr,
-                                               w_loss=1.,
-                                               w_loss_ocr=0.1).to(self.device)
-
-
-        if args.use_ssl:
-            from losses.losses import softmax_kl_loss, softmax_mse_loss, softmax_js_loss, consistency_weight
-            if args.dataset.lower() == 'segmentation':
-                self.dataset_ul = SegDataset(args.data_dir_ul,
-                                             root_path_ano=None,
-                                             crop_size=args.crop_size,
-                                             downsample_ratio=args.downsample_ratio,
-                                             method='test_no_gt')
-            else:
-                raise NotImplementedError
-
-            self.dataloader_ul = DataLoader(self.dataset_ul,
-                                              collate_fn=default_collate,
-                                              batch_size=args.batch_size_ul,
-                                              shuffle=True,
-                                              num_workers=args.num_workers * self.device_count,
-                                              pin_memory=True)
-
-            # Supervised and unsupervised losses
-            #self.unsuper_loss = softmax_kl_loss
-            self.unsuper_loss = softmax_mse_loss
-            #self.unsuper_loss = softmax_js_loss
-            #rampup_ends = int(config['ramp_up'] * config['trainer']['epochs'])
-            rampup_ends = int(args.max_epoch * args.rampup_ends)
-            iters_per_epoch = int(len(self.dataloader_ul) // args.batch_size_ul)
-            cons_w_unsup = consistency_weight(final_w=args.unsupervised_w, iters_per_epoch=iters_per_epoch ,
-                                                rampup_ends=rampup_ends)
-            self.unsup_loss_w = cons_w_unsup
-            if args.loss == 'abCE' and self.criterion is None:
-                self.criterion = abCE_loss(iters_per_epoch=iters_per_epoch, epochs=args.max_epoch, num_classes=args.classes).to(self.device)
-                if use_ocr:
-                    self.criterion_ocr = CrossEntropy(ignore_label=-1,
-                                              weight=None,
-                                              use_ocr=use_ocr,
-                                              w_loss=1.,
-                                              w_loss_ocr=0.1).to(self.device)
-
-        # optimizer
-#        trainable_params = [{'params': filter(lambda p:p.requires_grad, self.model.get_other_params())},
-#                            {'params': filter(lambda p:p.requires_grad, self.model.get_backbone_params()), 'lr': args.lr / 10}]
-#
+        self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
         # scheduler
@@ -306,13 +58,9 @@ class ClassificationTrainer(object):
 
         # dataset
         if args.dataset.lower() == 'classification':
-            self.datasets = {'train': SegDataset(os.path.join(args.data_dir, 'images', 'training'),
-                                                 os.path.join(args.data_dir, 'annotations', 'training'),
-                                                 args.crop_size, args.downsample_ratio, 'train', use_albumentation=args.use_albumentation, use_copy_paste=args.use_copy_paste),
-                             'val': SegDataset(os.path.join(args.data_dir, 'images', 'validation'),
-                                               os.path.join(args.data_dir, 'annotations', 'validation'),
-                                               args.crop_size, args.downsample_ratio, 'val'),
-                             }
+            self.datasets = {'train': ClassificationDataset(os.path.join(args.data_dir), args.crop_size, 'train',
+                                        use_albumentation=args.use_albumentation , use_copy_paste=args.use_copy_paste),
+                             'val'  : ClassificationDataset(os.path.join(args.data_dir), args.crop_size, 'val')}
         else:
             raise NotImplementedError
 
@@ -405,16 +153,7 @@ class ClassificationTrainer(object):
         epoch_start = time.time()
         self.model.train()  # Set model to training mode
 
-        if self.args.use_ssl:
-            iters = len(self.dataloader_ul)
-            stream = tqdm(zip(cycle(self.dataloaders['train']), self.dataloader_ul), total=iters)
-            #stream = tqdm(range(len(self.dataloader_ul)), ncols=135)
-            #dataloader = iter(zip(cycle(self.dataloaders['train']), self.dataloader_ul))
-        else:
-            iters = len(self.dataloaders['train'])
-            stream = tqdm(zip(self.dataloaders['train'], cycle(self.dataloader_ul)), total=iters)
-            #stream = tqdm(range(len(self.dataloaders['train'])), ncols=135)
-            #dataloader = iter(zip(self.dataloaders['train'], cycle(self.dataloader_ul)))
+        stream = tqdm(self.dataloaders['train'], total=len(self.dataloders['train']))
         for step, (x_l, x_ul) in enumerate(stream):
             inputs, masks = x_l
             if self.args.use_ssl:
@@ -423,66 +162,20 @@ class ClassificationTrainer(object):
             masks  = masks.squeeze(1).to(self.device) # squeeze ch(1ch)
             N = inputs.size(0)
             with torch.set_grad_enabled(True):
-                if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
-                    outputs = self.model(inputs)
-                    _loss = self.criterion_ocr(outputs, masks)
-                    loss = _loss.mean()
-
-                elif self.args.deep_supervision:
-                    if self.args.use_ocr:
-                        outputs, intermediates, out_ocr = self.model(inputs)
-                        _loss = self.criterion_ocr([out_ocr, outputs], masks) # out_ocr, out 順番注意
-                        w_deep_sup = 0.4
-                        w_each = w_deep_sup / len(intermediates)
-                        deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
-                        loss = _loss + torch.stack(deep_sup_loss).sum()
-
-                    else:
-                        outputs, intermediates = self.model(inputs)
-                        if self.args.loss == "abCE":
-                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
-                        else:
-                            _loss = self.criterion(outputs, masks)
-                        w_deep_sup = 0.4
-                        w_each = w_deep_sup / len(intermediates)
-                        if self.args.loss == "abCE":
-                            deep_sup_loss = [w_each*self.criterion(out, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch) for out in intermediates]
-                        else:
-                            deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
-                        del intermediates
-                        loss = _loss + torch.stack(deep_sup_loss).sum()
-                        del _loss, deep_sup_loss
-
+                outputs, intermediates = self.model(inputs)
+                if self.args.loss == "abCE":
+                    _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
                 else:
-                    if self.args.use_ocr:
-                        outputs, out_ocr = self.model(inputs)
-                        _loss = self.criterion_ocr([out_ocr, outputs], masks) # out_ocr, out 順番注意
-                        loss = _loss
-                    else:
-                        outputs = self.model(inputs)
-                        # Compute loss.
-                        if self.args.loss == "abCE":
-                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
-                        else:
-                            _loss = self.criterion(outputs, masks)
-                        loss = _loss
-
-
-                if self.args.use_ssl: # semi-supervised
-                    output_ul_main, outputs_ul_aux = self.model(x_ul, unsupervised=True)
-                    #targets = F.softmax(output_ul_main.detach(), dim=1) # main decoder output
-                    targets = output_ul_main.detach() # main decoder output
-                    loss_unsup = []
-                    for aux_out in outputs_ul_aux: # aux decoder outputs
-                        loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=True))
-                    del output_ul_main, outputs_ul_aux
-                    # Compute the unsupervised loss
-                    loss_unsup = sum(loss_unsup) / len(loss_unsup)
-                    weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)
-                    loss_unsup = loss_unsup * weight_u
-
-                    loss = loss + loss_unsup
-                    del loss_unsup
+                    _loss = self.criterion(outputs, masks)
+                w_deep_sup = 0.4
+                w_each = w_deep_sup / len(intermediates)
+                if self.args.loss == "abCE":
+                    deep_sup_loss = [w_each*self.criterion(out, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch) for out in intermediates]
+                else:
+                    deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
+                del intermediates
+                loss = _loss + torch.stack(deep_sup_loss).sum()
+                del _loss, deep_sup_loss
 
                 epoch_loss.update(loss.item(), N)
 
@@ -514,8 +207,6 @@ class ClassificationTrainer(object):
                         255,0,0,
                         0,0,255
                     ]
-                    if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
-                        outputs = outputs[1] # 0:ocr output/1:normal output
                     # show images to original size (1枚目の画像だけを表示する)
                     vis_img = outputs[0].detach().cpu().numpy()
                     # normalize density map values from 0 to 1, then map it to 0-255.
@@ -584,39 +275,13 @@ class ClassificationTrainer(object):
             assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
             masks  = masks.squeeze(1).to(self.device) # squeeze ch(1ch)
             with torch.set_grad_enabled(False):
-                if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
-                    nums = self.config.MODEL.NUM_OUTPUTS
-                    outputs = self.model(inputs)
-#                    _loss = self.criterion(outputs, masks)
-                    _loss = self.criterion_ocr(outputs, masks)
-                    loss = _loss.mean()
-                elif self.args.deep_supervision:
-                    if self.args.use_ocr:
-                        outputs, intermediates, out_ocr = self.model(inputs)
-                        del intermediates, out_ocr
-                        _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
-                        loss = _loss
-                    else:
-                        outputs, intermediates = self.model(inputs)
-                        del intermediates
-                        if self.args.loss == "abCE":
-                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
-                        else:
-                            _loss = self.criterion(outputs, masks)
-                        loss = _loss
+                outputs, intermediates = self.model(inputs)
+                del intermediates
+                if self.args.loss == "abCE":
+                    _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
                 else:
-                    if self.args.use_ocr:
-                        outputs, out_ocr = self.model(inputs)
-                        _loss = self.criterion(outputs, masks) # not calc deep supervision loss / ocr loss in validation
-                        loss = _loss
-                    else:
-                        outputs = self.model(inputs)
-                        # Compute loss.
-                        if self.args.loss == "abCE":
-                            _loss = self.criterion(outputs, masks, ignore_index=-1, curr_iter=step, epoch=self.epoch)
-                        else:
-                            _loss = self.criterion(outputs, masks)
-                        loss = _loss
+                    _loss = self.criterion(outputs, masks)
+                loss = _loss
 
                 epoch_loss.append(loss.item())
                 del loss
@@ -687,8 +352,6 @@ class ClassificationTrainer(object):
                         255,0,0,
                         0,0,255
                     ]
-                    if "hrnet" in self.args.encoder_name and "ocr" in self.args.encoder_name: # with OCR output
-                        outputs = outputs[1] # 0:ocr output/1:normal output
                     # show images to original size (1枚目の画像だけを表示する)
                     vis_img = outputs[0].detach().cpu().numpy()
                     # normalize density map values from 0 to 1, then map it to 0-255.

@@ -1,4 +1,4 @@
-from .model import SegmentationModel
+from .model import ClassificationModel
 
 from .modules import (
     Conv2dReLU,
@@ -6,6 +6,5 @@ from .modules import (
 )
 
 from .heads import (
-    SegmentationHead,
     ClassificationHead,
 )
