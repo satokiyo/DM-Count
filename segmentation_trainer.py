@@ -36,8 +36,17 @@ import neptune.new as neptune
 from neptune.new.types import File
 
 from PIL import Image
-from itertools import cycle
+#from itertools import cycle
 import copy
+
+def cycle(iterable):
+    iterator = iter(iterable)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration:
+            iterator = iter(iterable)
+
 
 class SegTrainer(object):
     def __init__(self, args):
@@ -345,7 +354,7 @@ class SegTrainer(object):
         # neptune
         self.run = neptune.init(project='satokiyo/{}'.format(args.project),
                            api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwMTAxZjFkZS1jODNmLTQ2MWQtYWJhYi1kZTM5OGQ3NWYyZDAifQ==',
-                           source_files=['*.py','*.sh'])#, 'requirements.txt'])
+                           source_files=['*.py', '*.sh', 'models'])
         for arg in vars(args):
             self.run[f'param_{arg}'] = getattr(args, arg)
         self.run["sys/tags"].add(args.neptune_tag)  # tag
@@ -447,6 +456,7 @@ class SegTrainer(object):
                         w_each = w_deep_sup / len(intermediates)
                         deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
                         loss = _loss + torch.stack(deep_sup_loss).sum()
+                        del _loss, deep_sup_loss
 
                     else:
                         outputs, intermediates = self.model(inputs)
@@ -469,6 +479,7 @@ class SegTrainer(object):
                         outputs, out_ocr = self.model(inputs)
                         _loss = self.criterion_ocr([out_ocr, outputs], masks) # out_ocr, out 順番注意
                         loss = _loss
+                        del _loss
                     else:
                         outputs = self.model(inputs)
                         # Compute loss.
@@ -652,8 +663,8 @@ class SegTrainer(object):
                     del x
                 del pred
                 for i in range(nums):
-                    pos = confusion_matrix[..., i].sum(1) # pred
-                    res = confusion_matrix[..., i].sum(0) # label
+                    pos = confusion_matrix[..., i].sum(0) # pred
+                    res = confusion_matrix[..., i].sum(1) # label
                     tp = np.diag(confusion_matrix[..., i])
                     fn = res - tp
                     fp = pos - tp

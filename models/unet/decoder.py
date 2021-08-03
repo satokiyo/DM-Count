@@ -132,7 +132,8 @@ class UnetDecoder(nn.Module):
             _out_channels = _out_channels[:-i]
         self.deep_supervision = deep_supervision
         if deep_supervision:
-            self.convs=[nn.Conv2d(och, self.n_class, 3, stride=1, padding=1) for och in _out_channels[::-1]]
+            self.convs=nn.ModuleList([nn.Conv2d(och, self.n_class, 3, stride=1, padding=1) for och in _out_channels[::-1]])
+            #self.convs=[nn.Conv2d(och, self.n_class, 3, stride=1, padding=1) for och in _out_channels[::-1]]
 
 
     def forward(self, *features):

@@ -2,6 +2,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from .batchnorm import SynchronizedBatchNorm2d
 from .contextual_layer import ContextualModule
+from ..base.modules import MyAdaptiveAvgPool2d
 import torch
 
 
@@ -36,36 +37,21 @@ class _ASPPModule(nn.Module):
 class ASPP(nn.Module):
     def __init__(self, inplanes, output_stride, BatchNorm):
         super(ASPP, self).__init__()
-#        if backbone == 'drn':
-#            inplanes = 512
-#        elif backbone == 'mobilenet':
-#            inplanes = 320
-#        else:
-#            inplanes = 512
         if output_stride == 16:
             dilations = [1, 6, 12, 18]
         elif output_stride == 8:
             dilations = [1, 12, 24, 36]
-        elif output_stride == 32:
-            dilations = [1, 2, 3, 6]
-            #dilations = [1, 3, 6, 9]
         else:
             raise NotImplementedError
 
-        #self.aspp1 = _ASPPModule(inplanes, 256, 1, padding=0, dilation=dilations[0], BatchNorm=BatchNorm)
-        #self.aspp2 = _ASPPModule(inplanes, 256, 3, padding=dilations[1], dilation=dilations[1], BatchNorm=BatchNorm)
-        #self.aspp3 = _ASPPModule(inplanes, 256, 3, padding=dilations[2], dilation=dilations[2], BatchNorm=BatchNorm)
-        #self.aspp4 = _ASPPModule(inplanes, 256, 3, padding=dilations[3], dilation=dilations[3], BatchNorm=BatchNorm)
         self.aspp1 = _ASPPModule(inplanes, inplanes, 1, padding=0, dilation=dilations[0], BatchNorm=BatchNorm)
         self.aspp2 = _ASPPModule(inplanes, inplanes, 3, padding=dilations[1], dilation=dilations[1], BatchNorm=BatchNorm)
         self.aspp3 = _ASPPModule(inplanes, inplanes, 3, padding=dilations[2], dilation=dilations[2], BatchNorm=BatchNorm)
         self.aspp4 = _ASPPModule(inplanes, inplanes, 3, padding=dilations[3], dilation=dilations[3], BatchNorm=BatchNorm)
 
-        #self.global_avg_pool = nn.Sequential(nn.AvgPool2d(32,32), # for 512*512
-        #self.global_avg_pool = nn.Sequential(nn.AvgPool2d(16,16), # for 256*256
-        self.global_avg_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)), # out-ch 256
+        #self.global_avg_pool = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)), # out-ch 256
+        self.global_avg_pool = nn.Sequential(MyAdaptiveAvgPool2d((1, 1)), # out-ch 256
                                              nn.Conv2d(inplanes, inplanes, 1, stride=1, bias=False),
-#                                             BatchNorm(inplanes),
                                              nn.ReLU())
         self.conv1 = nn.Conv2d(inplanes*5, inplanes, 1, bias=False)
         self.bn1 = BatchNorm(inplanes)
@@ -102,21 +88,18 @@ class ASPP(nn.Module):
 
 
 class ScalePyramidModule(nn.Module):
-
     def __init__(self, inplanes_aspp, inplanes_can):
         super(ScalePyramidModule, self).__init__()
-        #self.assp = ASPP(inplanes_aspp, output_stride=16, BatchNorm=SynchronizedBatchNorm2d)
         self.assp = ASPP(inplanes_aspp, output_stride=16, BatchNorm=nn.BatchNorm2d)
         self.can = ContextualModule(inplanes_can, inplanes_can)
         
     def forward(self, input):
         ret = []
         for i, tensor in enumerate(input):
-            if i == 3: # 1/2^3 = 1/8
+            if i == 3: # 1/2^4 = 1/8
                 tensor = self.can(input[i])
-            if i == 4: # 1/2^4 = 1/16
+            if i == 4: # 1/2^5 = 1/16
                 tensor = self.assp(input[i])
             ret.append(tensor)
-            del tensor
 
         return ret

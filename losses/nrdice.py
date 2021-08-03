@@ -75,7 +75,7 @@ class NoiseRobustDiceLoss(_Loss):
         h, w = y_true.size(1), y_true.size(2)
         if ph != h or pw != w:
             y_pred = F.interpolate(input=y_pred, size=(
-                h, w), mode='bilinear', align_corners=config.MODEL.ALIGN_CORNERS)
+                h, w), mode='bilinear', align_corners=True)
 
 
         if self.from_logits:

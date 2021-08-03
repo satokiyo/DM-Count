@@ -1,16 +1,17 @@
 import torch.nn as nn
-from .modules import Flatten, Activation
+from .modules import Flatten, Activation, MyAdaptiveAvgPool2d, MyAdaptiveMaxPool2d
 import torch
 
 
-#class SegmentationHead(nn.Sequential):
 class SegmentationHead(nn.Module):
 
     def __init__(self, in_channels, out_channels, kernel_size=3, activation=None, upsampling=1, use_attention_branch=False):
         super(SegmentationHead, self).__init__()
+        #self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
         self.conv2d = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, padding=kernel_size // 2)
         self.conv2d2 = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
-        self.upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
+        #self.upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
+        self.upsampling = nn.Identity()
         self.activation = Activation(activation)
 
         self.use_attention_branch=use_attention_branch
@@ -60,7 +61,8 @@ class ClassificationHead(nn.Sequential):
     def __init__(self, in_channels, classes, pooling="avg", dropout=0.2, activation=None):
         if pooling not in ("max", "avg"):
             raise ValueError("Pooling should be one of ('max', 'avg'), got {}.".format(pooling))
-        pool = nn.AdaptiveAvgPool2d(1) if pooling == 'avg' else nn.AdaptiveMaxPool2d(1)
+        #pool = nn.AdaptiveAvgPool2d(1) if pooling == 'avg' else nn.AdaptiveMaxPool2d(1)
+        pool = MyAdaptiveAvgPool2d((1,1)) if pooling == 'avg' else MyAdaptiveMaxPool2d((1,1))
         flatten = Flatten()
         dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
         linear = nn.Linear(in_channels, classes, bias=True)

@@ -111,7 +111,7 @@ class Trainer(object):
         # neptune
         self.run = neptune.init(project='satokiyo/{}'.format(args.project),
                            api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwMTAxZjFkZS1jODNmLTQ2MWQtYWJhYi1kZTM5OGQ3NWYyZDAifQ==',
-                           source_files=['*.py','*.sh'])#, 'requirements.txt'])
+                           source_files=[e for e in os.listdir('.') if not (e=='ckpts')])
         for arg in vars(args):
             self.run[f'param_{arg}'] = getattr(args, arg)
         #self.run["sys/tags"].add(['run-organization', 'me'])  # organize things

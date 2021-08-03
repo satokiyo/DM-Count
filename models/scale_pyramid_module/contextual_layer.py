@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch
 from torch.nn import functional as F
 from torchvision import models
+from ..base.modules import MyAdaptiveAvgPool2d
 
 class ContextualModule(nn.Module):
     def __init__(self, features, out_features=512, sizes=(1, 2, 3, 6)):
@@ -21,7 +22,8 @@ class ContextualModule(nn.Module):
         return F.sigmoid(self.weight_net(weight_feature))
 
     def _make_scale(self, features, size):
-        prior = nn.AdaptiveAvgPool2d(output_size=(size, size))
+        prior = MyAdaptiveAvgPool2d(output_size=(size, size))
+        #prior = nn.AdaptiveAvgPool2d(output_size=(size, size))
         conv = nn.Conv2d(features, features, kernel_size=1, bias=False)
         return nn.Sequential(prior, conv)
 
@@ -30,7 +32,6 @@ class ContextualModule(nn.Module):
         multi_scales = [F.upsample(input=stage(feats), size=(h, w), mode='bilinear') for stage in self.scales]
         weights = [self.__make_weight(feats,scale_feature) for scale_feature in multi_scales]
         overall_features = [(multi_scales[0]*weights[0]+multi_scales[1]*weights[1]+multi_scales[2]*weights[2]+multi_scales[3]*weights[3])/(weights[0]+weights[1]+weights[2]+weights[3])]+ [feats]
-        del multi_scales, weights
         bottle = self.bottleneck(torch.cat(overall_features, 1))
         return self.relu(bottle)
     
@@ -43,14 +44,3 @@ class ContextualModule(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-                
-                
-#class ContextualEncoder(nn.Module):
-#    def __init__(self):
-#        super(ContextualEncoder, self).__init__()
-#        self.can = ContextualModule(512, 512)
-#        
-#    def forward(self, *input):
-#        conv2_2, conv3_3, conv4_3, conv5_3 = input
-#        conv5_3 = self.can(conv5_3)
-#        return conv2_2, conv3_3, conv4_3, conv5_3

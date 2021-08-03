@@ -1,8 +1,6 @@
 import argparse
 import os
 import torch
-from train_helper import Trainer
-from regression_trainer import RegTrainer
 from segmentation_trainer import SegTrainer
 import torch.backends.cudnn as cudnn
 
@@ -79,6 +77,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    torch.manual_seed(0)
     # cudnn related setting
     cudnn.benchmark = True
     cudnn.deterministic = True
@@ -86,8 +85,6 @@ if __name__ == '__main__':
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()  # set vis gpu
     torch.cuda.empty_cache()
-#    trainer = Trainer(args)
-#    trainer = RegTrainer(args)
     trainer = SegTrainer(args)
     trainer.setup()
     trainer.train()

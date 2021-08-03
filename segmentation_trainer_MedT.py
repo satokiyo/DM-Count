@@ -280,7 +280,7 @@ class SegTrainer_MedT(object):
         # neptune
         self.run = neptune.init(project='satokiyo/{}'.format(args.project),
                            api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwMTAxZjFkZS1jODNmLTQ2MWQtYWJhYi1kZTM5OGQ3NWYyZDAifQ==',
-                           source_files=['*.py','*.sh'])#, 'requirements.txt'])
+                           source_files=['*.py', '*.sh', 'models'])
         for arg in vars(args):
             self.run[f'param_{arg}'] = getattr(args, arg)
         self.run["sys/tags"].add(args.neptune_tag)  # tag
@@ -451,7 +451,6 @@ class SegTrainer_MedT(object):
                 yval[yval==1] =255
                 #cv2.imwrite(fulldir+image_filename, yHaT[0,1,:,:])
                 # cv2.imwrite(fulldir+'/gt_{}.png'.format(count), yval[0,:,:])
-                import pdb;pdb.set_trace()
                 self.vlog.image(imgs=[yHaT[0,1,:,:]],
                           titles=['(Training) Image yHaT'],
                           window_ids=[2])

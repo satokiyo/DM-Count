@@ -24,9 +24,9 @@ neptune_tag=('me' 'seg')
 
 
 
-### change se resnext
 activation=identity # Available options are **"sigmoid"**, **"softmax"**, **"logsoftmax"**, **"tanh"**, **"identity"**, **callable** and **None**.
-neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'copy_paste' 'deep_supervision' 'ssl' 'spm_drop_rate_0.2')
+neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'copy_paste' 'deep_supervision' 'ssl' 'spm_drop_rate_0.2' 'decoder_ch_256_128_64_32_16' 'resume')
+
 #neptune_tag=(${neptune_tag[@]} 'vgg19_bn' 'unet' 'deep_supervision' 'copy_paste' 'ocr')
 encoder_name=se_resnext50_32x4d # vgg19_bn hrnet_seg hrnet_seg_ocr
 batch_size=2
@@ -85,5 +85,6 @@ python3 train.py \
 --data_dir_ul $data_dir_ul \
 --batch-size-ul $batch_size_ul \
 --rampup_ends $rampup_ends \
+--resume /media/prostate/20210331_PDL1/CLAM/models/segmentation/ckpts/10x/0720-164818/best_model_2.pth \
 --unsupervised_w $unsupervised_w
 
