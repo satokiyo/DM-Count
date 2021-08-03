@@ -280,11 +280,12 @@ class Crowd_sh(Base):
 
 
 class CellDataset(Base):
-    def __init__(self, root_path, crop_size,
+    def __init__(self, root_path, crop_size, resize_size,
                  downsample_ratio=8,
                  method='train',
                  use_albumentation=0):
         super().__init__(root_path, crop_size, downsample_ratio)
+        self.resize_size = resize_size
         self.method = method
         if method not in ['train', 'val', 'val_no_gt', 'test_no_gt']:
             raise Exception("not implement")
@@ -311,7 +312,7 @@ class CellDataset(Base):
         if use_albumentation:
             self.albumentations = A.Compose([
         # 20210428 tmp
-        #                               A.Resize(256,256, p=1.0),
+                                      A.Resize(resize_size,resize_size, p=1.0),
 #                                      A.HorizontalFlip(p=0.5),
 #                                      #A.RandomCrop(width=768, height=768, p=0.5),
                                       A.VerticalFlip(p=0.5),
@@ -334,9 +335,9 @@ class CellDataset(Base):
                                    keypoint_params=A.KeypointParams(format='xy'))
 
         # 20210428 tmp
-        #self.resize = A.Compose([
-        #                               A.Resize(256,256, p=1.0)],
-        #                           keypoint_params=A.KeypointParams(format='xy'))
+        self.resize = A.Compose([
+                                   A.Resize(resize_size,resize_size, p=1.0)],
+                                   keypoint_params=A.KeypointParams(format='xy'))
 
 
 
@@ -362,7 +363,8 @@ class CellDataset(Base):
         elif self.method == 'val':
             keypoints = sio.loadmat(gd_path)['image_info']
             ## 20210428 tmp
-            #img, keypoints = self.val_transform(img, keypoints)
+            if self.c_size != self.resize_size:
+                img, keypoints = self.val_transform(img, keypoints)
             img = self.trans(img)
             #return img, len(keypoints), name
             h = img.size(1)
@@ -424,8 +426,9 @@ class CellDataset(Base):
             keypoints = np.array(keypoints)
 
         ## 20210428 tmp
-        #w = int(w/2)
-        #h = int(h/2)
+        if self.c_size != self.resize_size:
+            w = self.resize_size
+            h = self.resize_size
         gt_discrete = gen_discrete_map(h, w, keypoints)
         down_w = w // self.d_ratio
         down_h = h // self.d_ratio
@@ -447,10 +450,11 @@ class CellDataset(Base):
             gt_discrete.copy()).float()
 
     ## 20210428 tmp
-    #def val_transform(self, img, keypoints):
-    #    transformed = self.resize(image=np.array(img), keypoints=keypoints)
-    #    img, keypoints = transformed['image'], transformed['keypoints']
-    #    return img, torch.from_numpy(np.array(keypoints).copy()).float()
+    def val_transform(self, img, keypoints):
+        transformed = self.resize(image=np.array(img), keypoints=keypoints)
+        img, keypoints = transformed['image'], transformed['keypoints']
+        return img, np.array(keypoints)
+        #return img, torch.from_numpy(np.array(keypoints).copy()).float()
 
 class CellDatasetBL(Base):
     """for BL"""

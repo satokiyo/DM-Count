@@ -6,6 +6,7 @@ from ..base import SegmentationHead, ClassificationHead
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+#from models.nuclei_detection.models.CCT.decoders import VATDecoder, DropOutDecoder, CutOutDecoder, ContextMaskingDecoder, ObjectMaskingDecoder, FeatureDropDecoder, FeatureNoiseDecoder
 from models.CCT.decoders import VATDecoder, DropOutDecoder, CutOutDecoder, ContextMaskingDecoder, ObjectMaskingDecoder, FeatureDropDecoder, FeatureNoiseDecoder
 
 
@@ -64,11 +65,11 @@ class Unet(SegmentationModel):
         classes: int = 1,
         activation: Optional[Union[str, callable]] = None,
         aux_params: Optional[dict] = None,
-        scale_pyramid_module = False, # add
-        use_attention_branch=False, # add
-        downsample_ratio=1, # add
-        deep_supervision=0, # add
-        use_ssl=0, # add
+        scale_pyramid_module = False,
+        use_attention_branch=False,
+        downsample_ratio=1,
+        deep_supervision=0,
+        use_ssl=0,
     ):
         super().__init__()
 
@@ -80,31 +81,28 @@ class Unet(SegmentationModel):
         )
 
         self.decoder = UnetDecoder(
-            encoder_channels=self.encoder.out_channels, # "out_channels": (3, 64, 256, 512, 1024, 2048), (resnet50) / (64,128,256,512,512,512) (vgg19_bn)
-            decoder_channels=decoder_channels, #  List[int] = (256, 128, 64, 32, 16),
+            encoder_channels=self.encoder.out_channels,
+            decoder_channels=decoder_channels,
             n_blocks=encoder_depth,
             use_batchnorm=decoder_use_batchnorm,
             center=True if encoder_name.startswith("vgg") else False,
             attention_type=decoder_attention_type,
-            scale_pyramid_module=scale_pyramid_module, # add
-            downsample_ratio=downsample_ratio, # add
-            n_class=classes, # add
-            deep_supervision=deep_supervision, # add
+            scale_pyramid_module=scale_pyramid_module,
+            downsample_ratio=downsample_ratio,
+            n_class=classes,
+            deep_supervision=deep_supervision,
         )
-        # ADD  どこまでupsample・concatするか?デフォルトはinputと同じサイズまで
         i=-1 # default
-        if downsample_ratio > 1: # 2,4,8,16
-            i = int(downsample_ratio / 2) # 1,2,3,4
+        if downsample_ratio > 1:
+            i = int(downsample_ratio / 2)
             assert i in [1,2,3,4]
-            i = -(i+1) # -2,-3,-4,-5
-        # TO ADD
+            i = -(i+1) 
         self.segmentation_head = SegmentationHead(
-            #in_channels=decoder_channels[-1],
             in_channels=decoder_channels[i],
             out_channels=classes,
             activation=activation,
             kernel_size=3,
-            use_attention_branch=use_attention_branch, # add
+            use_attention_branch=use_attention_branch,
         )
 
         if aux_params is not None:
@@ -156,8 +154,6 @@ class Unet(SegmentationModel):
         features = self.encoder(x)
         if unsupervised:
             # Get main prediction
-#            x_ul = self.encoder(x_ul)
-#            output_ul = self.main_decoder(x_ul)
             if self.deep_supervision:
                 output_ul_main, intermediates = self.decoder(*features)
                 del intermediates
@@ -173,13 +169,12 @@ class Unet(SegmentationModel):
 
             return masks, masks_aux
 
-#            loss_unsup = (loss_unsup / len(outputs_ul))
-
         else: # supervised
             if self.deep_supervision:
                 decoder_output, intermediates = self.decoder(*features)
     
                 masks = self.segmentation_head(decoder_output)
+                del decoder_output
         
                 if self.classification_head is not None:
                     labels = self.classification_head(features[-1])
@@ -191,6 +186,7 @@ class Unet(SegmentationModel):
                 decoder_output = self.decoder(*features)
     
                 masks = self.segmentation_head(decoder_output)
+                del decoder_output
     
                 if self.classification_head is not None:
                     labels = self.classification_head(features[-1])
@@ -212,17 +208,9 @@ class Unet(SegmentationModel):
             self.eval()
 
         with torch.no_grad():
-            #if self.deep_supervision:
-            #    x, hx = self.forward(x)
-            #    return x, hx
-            #else:
-            #    x = self.forward(x)
-            #    return x
-
             if self.deep_supervision:
                 masks, intermediates = self.forward(x)
                 del intermediates
-                #return masks, intermediates
                 return masks
 
             else:

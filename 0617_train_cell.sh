@@ -13,6 +13,7 @@ device='0'
 num_workers=4
 input_size=512
 crop_size=512
+resize=256
 #input_size=256
 #crop_size=256
 downsample_ratio=1 #1
@@ -30,7 +31,7 @@ t_0=10
 t_mult=1
 
 lr=5e-4
-neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.2' 'without_can' 'iter150' 'deep_supervision' 'ssl')
+neptune_tag=(${neptune_tag[@]} 'se_resnext50_32x4d' 'unet' 'spm_drop_rate_0.2' 'iter150' 'deep_supervision' 'ssl')
 encoder_name=se_resnext50_32x4d # vgg19_bn \
 #encoder_name=vgg19_bn # vgg19_bn \
 reg=1
@@ -63,6 +64,7 @@ python3 train.py \
 --num-workers $num_workers \
 --input-size $input_size \
 --crop-size $crop_size \
+--resize $resize \
 --visdom-server $visdom_server \
 --encoder_name $encoder_name \
 --classes 1 \
@@ -84,6 +86,8 @@ python3 train.py \
 --data_dir_ul $data_dir_ul \
 --batch-size-ul $batch_size_ul \
 --rampup_ends $rampup_ends \
+--resume /media/prostate/20210331_PDL1/nuclei_detection/DM-Count/ckpts/encoder-se_resnext50_32x4d_input-512_wot-0.1_wtv-0.7_reg-1.0_nIter-150_normCood-0/0714-195107/best_model_6.pth \
 --unsupervised_w $unsupervised_w
 
-
+#--resume /media/prostate/20210331_PDL1/nuclei_detection/DM-Count/ckpts/encoder-se_resnext50_32x4d_input-512_wot-0.1_wtv-0.7_reg-1.0_nIter-150_normCood-0/0618-235059/14_ckpt.tar \
+#--resume /media/prostate/20210331_PDL1/nuclei_detection/DM-Count/ckpts/encoder-se_resnext50_32x4d_input-512_wot-0.1_wtv-0.7_reg-1.0_nIter-150_normCood-0/0714-154652/1_ckpt.tar \

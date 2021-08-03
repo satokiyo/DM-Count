@@ -22,9 +22,18 @@ from losses.ot_loss import OT_Loss
 from models.dmcount_model import DMCountModel
 import neptune.new as neptune
 from neptune.new.types import File
-from itertools import cycle
+#from itertools import cycle
 import copy
 import torch.nn.functional as F
+
+
+def cycle(iterable):
+    iterator = iter(iterable)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration:
+            iterator = iter(iterable)
 
 
 def train_collate(batch):
@@ -89,12 +98,13 @@ class Trainer(object):
                              }
         elif args.dataset.lower() == 'cell':
             self.datasets = {'train': CellDataset(os.path.join(args.data_dir, 'train'),
-                                               args.crop_size, downsample_ratio, 'train', use_albumentation=args.use_albumentation),
+                                               args.crop_size, args.resize, downsample_ratio, 'train', use_albumentation=args.use_albumentation),
                              'val': CellDataset(os.path.join(args.data_dir, 'val'),
-                                             args.crop_size, downsample_ratio, 'val'),
+                                             args.crop_size, args.resize, downsample_ratio, 'val'),
                              }
             self.dataset_ul = CellDataset(os.path.join(args.data_dir_ul, 'ssl'),
                                             args.crop_size,
+                                            args.resize,
                                             downsample_ratio,
                                             'val_no_gt')
  
@@ -142,7 +152,7 @@ class Trainer(object):
         # neptune
         self.run = neptune.init(project='satokiyo/{}'.format(args.project),
                            api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwMTAxZjFkZS1jODNmLTQ2MWQtYWJhYi1kZTM5OGQ3NWYyZDAifQ==',
-                           source_files=['*.py','*.sh'])#, 'requirements.txt'])
+                           source_files=['*.py', '*.sh', 'models'])
         for arg in vars(args):
             self.run[f'param_{arg}'] = getattr(args, arg)
         self.run["sys/tags"].add(args.neptune_tag)  # tag
@@ -188,9 +198,10 @@ class Trainer(object):
         else:
             self.logger.info('random initialization')
         # 20210428 tmp
-        #self.ot_loss = OT_Loss(int(args.crop_size/2), downsample_ratio, args.norm_cood, self.device, args.num_of_iter_in_ot,
-        self.ot_loss = OT_Loss(args.crop_size, downsample_ratio, args.norm_cood, self.device, args.num_of_iter_in_ot,
-                               args.reg)
+        if args.crop_size != args.resize:
+            self.ot_loss = OT_Loss(args.resize, downsample_ratio, args.norm_cood, self.device, args.num_of_iter_in_ot, args.reg)
+        else:
+            self.ot_loss = OT_Loss(args.crop_size, downsample_ratio, args.norm_cood, self.device, args.num_of_iter_in_ot, args.reg)
         self.tv_loss = nn.L1Loss(reduction='none').to(self.device)
         self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
@@ -293,9 +304,10 @@ class Trainer(object):
                         mu_sum = i.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
                         outputs_normed = i / (mu_sum + 1e-6)
                         ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, i, points, self.epoch)
-                        del wd, ot_obj_value
+                        del wd, ot_obj_value, i, B, C, H, W
                         ot_loss = ot_loss * w_each
                         deep_sup_loss.append(ot_loss)
+                        del ot_loss
                     loss = loss + torch.stack(deep_sup_loss).sum()
                     del intermediates, deep_sup_loss
 
@@ -307,6 +319,7 @@ class Trainer(object):
                     loss_unsup = []
                     for aux_out in outputs_ul_aux: # aux decoder outputs
                         loss_unsup.append(self.unsuper_loss(inputs=aux_out, targets=targets, conf_mask=False, threshold=None, use_softmax=True))
+                        del aux_out
                     # Compute the unsupervised loss
                     loss_unsup = sum(loss_unsup) / len(loss_unsup)
                     weight_u = self.unsup_loss_w(epoch=self.epoch, curr_iter=step)

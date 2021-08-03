@@ -31,6 +31,7 @@ parser.add_argument('--scale_pyramid_module', type=int, default=0,)
 parser.add_argument('--use_attention_branch', type=int, default=0,) 
 parser.add_argument('--downsample-ratio', type=int, default=1)
 parser.add_argument('--input-size', type=int, default=512) 
+parser.add_argument('--resize', type=int, default=512) 
 parser.add_argument('--deep_supervision', type=int, default=0) 
 parser.add_argument('--use_ssl', type=int, default=0) 
 parser.add_argument('--cfg', type=str, default='')
@@ -179,6 +180,7 @@ else:
 
 model_path = args.model_path
 crop_size = args.crop_size
+resize = args.resize
 data_path = args.data_path
 if args.dataset.lower() == 'qnrf':
     dataset = crowd.Crowd_qnrf(os.path.join(data_path, 'test'), crop_size, 8, method='val')
@@ -188,9 +190,9 @@ elif args.dataset.lower() == 'sha' or args.dataset.lower() == 'shb':
     dataset = crowd.Crowd_sh(os.path.join(data_path, 'test_data'), crop_size, 8, method='val')
 elif args.dataset.lower() == 'cell':
     if args.test_type in ['val', 'val_no_gt']:
-        dataset = crowd.CellDataset(os.path.join(data_path, 'val'), crop_size, 1,  method=args.test_type)
+        dataset = crowd.CellDataset(os.path.join(data_path, 'val'), crop_size, resize, 1,  method=args.test_type)
     elif args.test_type == 'test_no_gt':
-        dataset = crowd.CellDataset(os.path.join(data_path, 'test'), crop_size, 1,  method=args.test_type)
+        dataset = crowd.CellDataset(os.path.join(data_path, 'test'), crop_size, resize, 1,  method=args.test_type)
  
 else:
     raise NotImplementedError

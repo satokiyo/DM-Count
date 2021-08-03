@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument('--use_albumentation', type=int, default=0,)
     parser.add_argument('--project', type=str, default="test")
     parser.add_argument('--input-size', type=int, default=512) 
+    parser.add_argument('--resize', type=int, default=512) 
     parser.add_argument('--t_0', type=int, default=500) #Number of iterations for the first restart of annealingwarmrestart
     parser.add_argument('--t_mult', type=int, default=1) # A factor increases after a restart. Default: 1.
     parser.add_argument('--neptune-tag', type=str, nargs='*')
