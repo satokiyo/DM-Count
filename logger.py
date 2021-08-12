@@ -155,7 +155,7 @@ class Logger():
                                  % (len(imgs), len(titles), len(window_ids)))
 
             for img, title, win in zip(imgs, titles, window_ids):
-                self.client.image(img,
+                self.client.image(img.copy(),
                                   opts=dict(title=title),
                                   win=str(win))
 

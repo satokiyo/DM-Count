@@ -13,7 +13,6 @@ class MobileNetV2(ClassificationModel):
         classes: int = 1,
         activation: Optional[Union[str, callable]] = None,
         aux_params: Optional[dict] = None,
-        scale_pyramid_module = False,
     ):
         super().__init__()
 
@@ -40,8 +39,3 @@ class MobileNetV2(ClassificationModel):
 
         self.name = "u-{}".format(encoder_name)
         self.initialize()
-
-    ## override
-    #def forward(self, x, unsupervised=False):
-    #    """Sequentially pass `x` trough model`s encoder, decoder and heads"""
-    #    features = self.encoder(x)

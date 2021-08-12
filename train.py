@@ -35,7 +35,7 @@ def parse_args():
                                 "If not provided, nothing will "
                                 "be sent to Visdom.")
     parser.add_argument('--visdom-port',
-                           default=8991,
+                           default=8990,
                            metavar='PRT',
                            help="Port of the Visdom server.")
 
@@ -43,8 +43,6 @@ def parse_args():
     parser.add_argument('--classes', type=int, default=1)
     parser.add_argument('--data_check', type=int, default=0,) 
     parser.add_argument('--use_albumentation', type=int, default=0,)
-    parser.add_argument('--use_copy_paste', type=int, default=0,)
-    parser.add_argument('--project', type=str, default="test")
     parser.add_argument('--input-size', type=int, default=512) 
     parser.add_argument('--t_0', type=int, default=500) #Number of iterations for the first restart of annealingwarmrestart
     parser.add_argument('--t_mult', type=int, default=1) # A factor increases after a restart. Default: 1.
@@ -53,7 +51,8 @@ def parse_args():
     parser.add_argument('--neptune_api_token', type=str)
     parser.add_argument('--neptune-tag', type=str, nargs='*')
     parser.add_argument('--activation', type=str,default=None)
-    parser.add_argument('--loss', type=str,default="ce") # dice softce focal jaccard lovasz wing combo mae nrdice
+    parser.add_argument('--flag_csv', type=str, nargs='*')
+    parser.add_argument('--label_smooth', type=int, default=0)
 
     parser.add_argument('opts',
                         help="Modify config options using the command-line",

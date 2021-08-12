@@ -2,7 +2,7 @@ import torch
 from . import initialization as init
 
 
-class ClassificationModel(torch.nn.Module):
+class ClassificationModelBase(torch.nn.Module):
 
     def initialize(self):
         init.initialize_head(self.classification_head)
@@ -13,13 +13,13 @@ class ClassificationModel(torch.nn.Module):
         """Sequentially pass `x` trough model`s encoder, decoder and heads"""
         features = self.encoder(x)
 
-        labels = self.classification_head(features[-1])
+        preds = self.classification_head(features[-1])
 
         if self.classification_head_aux is not None:
-            labels_aux = self.classification_head(features[-1])
-            return labels, labels_aux
+            preds_aux = self.classification_head(features[-1])
+            return preds, preds_aux
 
-        return labels
+        return preds
 
     def predict(self, x):
         """Inference method. Switch model to `eval` mode, call `.forward(x)` with `torch.no_grad()`

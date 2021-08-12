@@ -2,7 +2,7 @@ import torch.nn as nn
 from .modules import Flatten, Activation, MyAdaptiveMaxPool2d, MyAdaptiveAvgPool2d
 import torch
 
-class ClassificationHead(nn.Sequential):
+class ClassificationHeadBase(nn.Sequential):
 
     def __init__(self, in_channels, classes, pooling="avg", dropout=0.2, activation=None):
         if pooling not in ("max", "avg"):

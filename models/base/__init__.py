@@ -1,4 +1,4 @@
-from .model import ClassificationModel
+from .model import ClassificationModelBase
 
 from .modules import (
     Conv2dReLU,
@@ -6,5 +6,5 @@ from .modules import (
 )
 
 from .heads import (
-    ClassificationHead,
+    ClassificationHeadBase,
 )
