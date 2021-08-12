@@ -1,9 +1,13 @@
 import functools
 import torch.utils.model_zoo as model_zoo
 
+from .vgg import vgg_encoders
+from .timm_efficientnet import timm_efficientnet_encoders
 from .senet import senet_encoders
 
 encoders = {}
+encoders.update(vgg_encoders)
+encoders.update(timm_efficientnet_encoders)
 encoders.update(senet_encoders)
 
 
