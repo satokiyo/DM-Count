@@ -215,6 +215,7 @@ class Unet(SegmentationModel):
                     out_aux = self.ocr_head(decoder_output) 
                     # compute contrast feature
                     feats = self.conv3x3_ocr(decoder_output)
+                    del decoder_output
             
                     context = self.ocr_gather_head(feats, out_aux)
                     feats = self.ocr_distri_head(feats, context)
@@ -224,12 +225,15 @@ class Unet(SegmentationModel):
     
                     if self.classification_head is not None:
                         labels = self.classification_head(features[-1])
+                        del features
                         return masks, labels, intermediate_output, out_aux
     
+                    del features
                     return masks, intermediate_output, out_aux
     
                 else:
                     masks = self.segmentation_head(decoder_output)
+                    del decoder_output
         
                 if self.classification_head is not None:
                     labels = self.classification_head(features[-1])
@@ -245,6 +249,7 @@ class Unet(SegmentationModel):
                     out_aux = self.ocr_head(decoder_output) 
                     # compute contrast feature
                     feats = self.conv3x3_ocr(decoder_output)
+                    del decoder_output
             
                     context = self.ocr_gather_head(feats, out_aux)
                     feats = self.ocr_distri_head(feats, context)
@@ -253,17 +258,22 @@ class Unet(SegmentationModel):
     
                     if self.classification_head is not None:
                         labels = self.classification_head(features[-1])
+                        del features
                         return masks, labels, out_aux
-    
+
+                    del features
                     return masks, out_aux
     
                 else:
                     masks = self.segmentation_head(decoder_output)
+                    del decoder_output
     
                     if self.classification_head is not None:
                         labels = self.classification_head(features[-1])
+                        del features
                         return masks, labels
         
+                    del features
                     return masks
 
     def predict(self, x):

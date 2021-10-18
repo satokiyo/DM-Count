@@ -69,14 +69,19 @@ class NoiseRobustDiceLoss(_Loss):
 
 
     def _forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        bs = y_true.size(0)
+        num_classes = y_pred.size(1)
+        dims = (0, 2)
 
 #        assert y_true.size(0) == y_pred.size(0)
         ph, pw = y_pred.size(2), y_pred.size(3)
-        h, w = y_true.size(1), y_true.size(2)
+        if y_true.size(1) == num_classes:
+            h, w = y_true.size(2), y_true.size(3)
+        else:
+            h, w = y_true.size(1), y_true.size(2)
         if ph != h or pw != w:
             y_pred = F.interpolate(input=y_pred, size=(
                 h, w), mode='bilinear', align_corners=True)
-
 
         if self.from_logits:
             # Apply activations to get [0..1] class probabilities
@@ -86,10 +91,6 @@ class NoiseRobustDiceLoss(_Loss):
                 y_pred = y_pred.log_softmax(dim=1).exp()
             else:
                 y_pred = F.logsigmoid(y_pred).exp()
-
-        bs = y_true.size(0)
-        num_classes = y_pred.size(1)
-        dims = (0, 2)
 
         if self.mode == BINARY_MODE:
             y_true = y_true.view(bs, 1, -1)
@@ -101,18 +102,25 @@ class NoiseRobustDiceLoss(_Loss):
                 y_true = y_true * mask
 
         if self.mode == MULTICLASS_MODE:
-            y_true = y_true.view(bs, -1)
+            if y_true.size(1) == num_classes:
+                y_true = y_true.view(bs, num_classes, -1)
+            else:
+                y_true = y_true.view(bs, -1)
             y_pred = y_pred.view(bs, num_classes, -1)
 
             if self.ignore_index is not None:
                 mask = y_true != self.ignore_index
                 y_pred = y_pred * mask.unsqueeze(1)
 
-                y_true = F.one_hot((y_true * mask).to(torch.long), num_classes)  # N,H*W -> N,H*W, C
-                y_true = y_true.permute(0, 2, 1) * mask.unsqueeze(1)  # H, C, H*W
+                if y_true.size(1) != num_classes:
+                    y_true = F.one_hot((y_true * mask).to(torch.long), num_classes)  # N,H*W -> N,H*W, C
+                    y_true = y_true.permute(0, 2, 1) * mask.unsqueeze(1)  # H, C, H*W
             else:
-                y_true = F.one_hot(y_true, num_classes)  # N,H*W -> N,H*W, C
-                y_true = y_true.permute(0, 2, 1)  # H, C, H*W
+                if y_true.size(1) != num_classes:
+                    y_true = F.one_hot(y_true, num_classes)  # N,H*W -> N,H*W, C
+                    y_true = y_true.permute(0, 2, 1)  # H, C, H*W
+                else:
+                    y_true = y_true.log_softmax(dim=1).exp()
 
         if self.mode == MULTILABEL_MODE:
             y_true = y_true.view(bs, num_classes, -1)

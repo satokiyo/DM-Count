@@ -10,9 +10,10 @@ def str2bool(v):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
-    parser.add_argument('--data-dir', help='data path')
+    parser.add_argument('--datadir', help='data path')
     parser.add_argument('--dataset', default='segmentation', help='dataset name: segmentation')
-    parser.add_argument('--lr', type=float, default=1e-5, help='the initial learning rate')
+    parser.add_argument('--lr-max', type=float, default=1e-3, help='the initial learning rate')
+    parser.add_argument('--lr-min', type=float, default=1e-5, help='the initial learning rate')
     parser.add_argument('--weight-decay', type=float, default=1e-4, help='the weight decay')
     parser.add_argument('--resume', default='', type=str, help='the path of resume training model')
     parser.add_argument('--max-epoch', type=int, default=1000, help='max training epoch')
@@ -61,7 +62,9 @@ def parse_args():
     parser.add_argument('--batch-size-ul', type=int, default=10) 
     parser.add_argument('--unsupervised_w', type=int, default=30) 
     parser.add_argument('--rampup_ends', type=float, default=0.4)
-    parser.add_argument('--data_dir_ul', help='data path', type=str, default='')
+    parser.add_argument('--datadir_ul', help='data path', type=str, default='')
+    parser.add_argument('--amp', type=int, default=1, help='mixed precision training')
+    parser.add_argument('--finetune', type=int, default=0, help='freeze encoder and learn decoder only. must specify --resume')
 
 
 

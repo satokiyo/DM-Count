@@ -63,7 +63,7 @@ class SegDataset(Base):
         if method in ['train', 'val']: # with gt
             self.im_list = sorted(list(Path(self.root_path_img).glob("**/*.jpg")))
             if root_path_ano is not None:
-                self.gt_list = [Path(self.root_path_ano) / p.name.replace("jpg", "png") for p in self.im_list]
+                self.gt_list = [Path(self.root_path_ano) / p.parent.name / p.name.replace("jpg", "png") for p in self.im_list]
             else:
                 raise Exception("specify gt dir")
         elif method in ['val_no_gt', 'test_no_gt']: # without gt
