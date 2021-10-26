@@ -42,15 +42,15 @@ import copy
 import gc
 
 PALETTE = [
-    255,0,0, #ff0000 0 cancer
-    0,255,0, #00ff00 1 not_cancer
-    0,0,255, #0000ff 2 bronchial_epitherial
-    0,255,255, #00ffff 3 macrophage
-    255,0,255, #ff00ff 4 lymphocyte
-    255,255,0, #ffff00 5 stroma
-    0,0,0,   #000000 6 background
+    0,0,0,
+    0,255,0,
+    255,0,0,
+    0,0,255,
+    255,0,255,
+    255,255,0,
 ]
 
+ 
 def cycle(iterable):
     iterator = iter(iterable)
     while True:
@@ -61,7 +61,7 @@ def cycle(iterable):
 
 
 class ModelEMA(nn.Module):
-    def __init__(self, model, decay=0.999, device=None):
+    def __init__(self, model, decay=0.9999, device=None):
         super().__init__()
         self.module = copy.deepcopy(model)
         self.module.eval()
@@ -465,8 +465,8 @@ class SegTrainer(object):
             exit()
 
         # neptune
-        self.run = neptune.init(project='satokiyo/{}'.format(args.project),
-                           api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIwMTAxZjFkZS1jODNmLTQ2MWQtYWJhYi1kZTM5OGQ3NWYyZDAifQ==',
+        self.run = neptune.init(project='{}/{}'.format(args.neptune_user, args.neptune_project),
+                           api_token=args.neptune_api_token,
                            source_files=['*.py', '*.sh', 'models'])
         for arg in vars(args):
             self.run[f'param_{arg}'] = getattr(args, arg)
@@ -542,6 +542,7 @@ class SegTrainer(object):
         epoch_loss = AverageMeter()
         epoch_start = time.time()
         self.model.train()  # Set model to training mode
+        clip = 1
 
         if self.args.use_ssl:
             iters = len(self.dataloader_ul)
@@ -638,6 +639,8 @@ class SegTrainer(object):
                 #    self.optimizer.step()
 
                 loss.backward()
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.scheduler.step(self.epoch + step / iters)
@@ -809,7 +812,7 @@ class SegTrainer(object):
                 epoch_recall_macro.append(recall_macro)
                 epoch_precision_macro.append(precision_macro)
 
-                stream.set_description('Epoch {} Val, Loss: {:.2f} iou0: {:.2f} iou1: {:.2f} iou2: {:.2f} iou3: {:.2f} iou4: {:.2f} iou5: {:.2f} iou6: {:.2f} miou: {:.2f}'
+                stream.set_description('Epoch {} Val, Loss: {:.2f} iou0: {:.2f} iou1: {:.2f} iou2: {:.2f} iou3: {:.2f} iou4: {:.2f} iou5: {:.2f} miou: {:.2f}'
                                               .format(self.epoch,
                                                np.mean(np.array(epoch_loss)),
                                                np.mean(np.array(epoch_iou_class['0'])),
@@ -818,7 +821,6 @@ class SegTrainer(object):
                                                np.mean(np.array(epoch_iou_class['3'])),
                                                np.mean(np.array(epoch_iou_class['4'])),
                                                np.mean(np.array(epoch_iou_class['5'])),
-                                               np.mean(np.array(epoch_iou_class['6'])),
                                                np.mean(np.array(epoch_miou))))
     
                 # show image

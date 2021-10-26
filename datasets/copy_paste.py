@@ -200,7 +200,7 @@ class CopyPaste(A.DualTransform):
         #for mask in masks[1:]:
         #    alpha += mask > 0
         #alpha = np.where((mask == 2) | (mask == 3),1,0) # 現状、とりあえず cancer(idx color=2) or 気管支線(idx color=3) のみをペーストする
-        alpha = np.where(((mask == 0) | (mask == 1) | (mask == 2) | mask == 3) | (mask == 4) | (mask == 5),1,0) # 背景以外をペーストする
+        alpha = np.where(((mask == 1) | (mask == 2) | (mask == 3) | (mask == 4)),1,0) # 背景 or stroma以外をペーストする
         #alpha = np.where((mask == 0),1,0) # cancer region ペーストする
         #alpha = np.where((mask == 2),1,0) # cancer(idx color=2) のみをペーストする
 

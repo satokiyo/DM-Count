@@ -65,6 +65,9 @@ def parse_args():
     parser.add_argument('--datadir_ul', help='data path', type=str, default='')
     parser.add_argument('--amp', type=int, default=1, help='mixed precision training')
     parser.add_argument('--finetune', type=int, default=0, help='freeze encoder and learn decoder only. must specify --resume')
+    parser.add_argument('--neptune_project', type=str)
+    parser.add_argument('--neptune_user', type=str) 
+    parser.add_argument('--neptune_api_token', type=str)
 
 
 
