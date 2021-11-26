@@ -12,9 +12,11 @@ def str2bool(v):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
-    parser.add_argument('--data-dir', default='data/UCF-Train-Val-Test', help='data path')
+    parser.add_argument('--datadir', default='data/UCF-Train-Val-Test', help='data path')
     parser.add_argument('--dataset', default='cell', help='dataset name: qnrf, nwpu, sha, shb')
-    parser.add_argument('--lr', type=float, default=1e-5,
+    parser.add_argument('--lr-max', type=float, default=1e-4,
+                        help='the initial learning rate')
+    parser.add_argument('--lr-min', type=float, default=1e-5,
                         help='the initial learning rate')
     parser.add_argument('--weight-decay', type=float, default=1e-4,
                         help='the weight decay')
@@ -74,12 +76,12 @@ def parse_args():
     parser.add_argument('--activation', type=str,default=None)
     parser.add_argument('--deep_supervision', type=int,default=0)
     parser.add_argument('--cfg', type=str,default="")
-    parser.add_argument('--loss', type=str,default="ce") # dice softce focal jaccard lovasz wing combo mae nrdice
     parser.add_argument('--use_ssl', type=int,default=0) 
     parser.add_argument('--batch-size-ul', type=int, default=10) 
     parser.add_argument('--unsupervised_w', type=int, default=30) 
     parser.add_argument('--rampup_ends', type=float, default=0.4)
-    parser.add_argument('--data_dir_ul', help='data path', type=str, default='')
+    parser.add_argument('--datadir_ul', help='data path', type=str, default='')
+    parser.add_argument('--amp', type=int, default=1, help='mixed precision training')
 
 
 

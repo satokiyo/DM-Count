@@ -297,7 +297,7 @@ class CellDataset(Base):
                 if '_pred' in str(gt):
                     continue
                 p = Path(gt)
-                img_path = str(p.parent) + '/' +  str(p.stem) + '.jpg'
+                img_path = str(p.parent.parent) + '/' +  str(p.stem) + '.jpg'
                 #img_path = str(gt).split('.')[0] + '.jpg'
                 #img_path = str(gt).split('.')[0] + '.jpg_pred.jpg'
                 im_list.append(img_path)
@@ -305,6 +305,19 @@ class CellDataset(Base):
         elif method in  ['val_no_gt', 'test_no_gt']: # without gt
             self.im_list = sorted(list(Path(self.root_path).glob("**/*.jpg")))
 
+#        # 20210908 tmp
+#        if method == 'train':
+#            import random
+#            random.seed(0)
+#            if len(self.im_list) > 2000:
+#                self.im_list = random.sample(self.im_list, 2000)
+#
+#        if method == 'val':
+#           import random
+#           random.seed(0)
+#           if len(self.im_list) > 2000:
+#               self.im_list = random.sample(self.im_list, 2000)
+    
         print('number of img: {}'.format(len(self.im_list)))
 
 
@@ -354,7 +367,8 @@ class CellDataset(Base):
  
         #gd_path = self.gt_list[item]
         #gd_path = str(img_path).split('.')[0] + '.mat'
-        gd_path = str(p.parent) + '/' +  str(p.stem) + '.mat'
+        #gd_path = str(p.parent) + '/' +  str(p.stem) + '.mat'
+        gd_path = str(p.parent) + '/yolo/' +  str(p.stem) + '.mat'
         img = Image.open(img_path).convert('RGB')
 
         if self.method == 'train':

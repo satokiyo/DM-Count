@@ -36,6 +36,8 @@ class DecoderBlock(nn.Module):
     def forward(self, x, skip=None):
         x = F.interpolate(x, scale_factor=2, mode="bilinear")
         if skip is not None:
+            if x.size()[2:] != skip.size()[2:]:
+                skip = F.interpolate(skip, size=x.size()[2:], scale_factor=None, mode="nearest")
             x = torch.cat([x, skip], dim=1)
             x = self.attention1(x)
         x = self.conv1(x)
@@ -126,10 +128,9 @@ class UnetDecoder(nn.Module):
             _out_channels = _out_channels[:-i]
         self.deep_supervision = deep_supervision
         if deep_supervision:
-            self.convs=nn.ModuleList([nn.Sequential(
-                          nn.Conv2d(och, self.n_class, 3, stride=1, padding=1),
-                          nn.ReLU(inplace=True),
-                        ) for och in _out_channels[::-1]])
+            #self.convs=nn.ModuleList([nn.Conv2d(och, self.n_class, 3, stride=1, padding=1) for och in _out_channels[::-1]])
+            self.convs=[nn.Conv2d(och, self.n_class, 3, stride=1, padding=1) for och in _out_channels[::-1]]
+            self.activations=[nn.ReLU(inplace=True) for _ in _out_channels[::-1]]
 
 
     def forward(self, *features):
@@ -166,6 +167,7 @@ class UnetDecoder(nn.Module):
                 # 3-by-3 conv2d --> upsampling --> sigmoid output activation
                 pool_size = 2**(i)
                 hx = self.convs[i].to(x.device)(out_stack)
+                hx = self.activations[i].to(x.device)(hx)
                 del out_stack
                 hx = F.interpolate(hx, scale_factor=pool_size, mode="bilinear")
                 # collecting deep supervision tensors

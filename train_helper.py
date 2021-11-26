@@ -3,7 +3,8 @@ import time
 import torch
 import torch.nn as nn
 from torch import optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler
+#from torch.cuda import amp
 from torch.utils.data.dataloader import default_collate
 import numpy as np
 import cv2
@@ -22,7 +23,6 @@ from losses.ot_loss import OT_Loss
 from models.dmcount_model import DMCountModel
 import neptune.new as neptune
 from neptune.new.types import File
-#from itertools import cycle
 import copy
 import torch.nn.functional as F
 
@@ -44,6 +44,91 @@ def train_collate(batch):
     return images, points, gt_discretes
 
 
+class ModelEMA(nn.Module):
+    def __init__(self, model, decay=0.999, device=None):
+        super().__init__()
+        self.module = copy.deepcopy(model)
+        self.module.eval()
+        self.decay = decay
+        self.device = device
+        if self.device is not None:
+            self.module.to(device=device)
+
+    def forward(self, input, unsupervised=False):
+        return self.module(input, unsupervised)
+
+    def _update(self, model, update_fn):
+        with torch.no_grad():
+            for ema_v, model_v in zip(self.module.parameters(), model.parameters()):
+                if self.device is not None:
+                    model_v = model_v.to(device=self.device)
+                ema_v.copy_(update_fn(ema_v, model_v))
+            for ema_v, model_v in zip(self.module.buffers(), model.buffers()):
+                if self.device is not None:
+                    model_v = model_v.to(device=self.device)
+                ema_v.copy_(model_v)
+
+    def update_parameters(self, model):
+        self._update(model, update_fn=lambda e, m: self.decay * e + (1. - self.decay) * m)
+
+    def state_dict(self):
+        return self.module.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self.module.load_state_dict(state_dict)
+
+
+class EarlyStopping:
+    """Early stops the training if validation loss doesn't improve after a given patience."""
+    def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+                            Default: 7
+            verbose (bool): If True, prints a message for each validation loss improvement. 
+                            Default: False
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+                            Default: 0
+            path (str): Path for the checkpoint to be saved to.
+                            Default: 'checkpoint.pt'
+            trace_func (function): trace print function.
+                            Default: print            
+        """
+        self.patience = patience
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.delta = delta
+        self.path = path
+        self.trace_func = trace_func
+
+    def __call__(self, val_loss):
+
+        score = -val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+            #self.save_checkpoint(val_loss, model)
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            #self.save_checkpoint(val_loss, model)
+            self.counter = 0
+
+    #def save_checkpoint(self, val_loss, model):
+    #    '''Saves model when validation loss decrease.'''
+    #    if self.verbose:
+    #        self.trace_func(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+    #    torch.save(model.state_dict(), self.path)
+    #    self.val_loss_min = val_loss
+
+
 class Trainer(object):
     def __init__(self, args):
         self.args = args
@@ -61,6 +146,7 @@ class Trainer(object):
 
         # Model
         self.model = DMCountModel(args)
+        self.model = ModelEMA(self.model, 0.9999, self.device)
 
         #from kiunet import kiunet, densekiunet, reskiunet
         #self.model = kiunet()
@@ -73,36 +159,40 @@ class Trainer(object):
         #self.model = seg_hrnet_ocr.get_seg_model(config)
 
         self.model.to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
         #self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr)
         #T_0=35 #Number of iterations for the first restart.
         #T_mult=1 # A factor increases after a restart. Default: 1.
-        eta_min=1e-5 #Minimum learning rate. Default: 0.
-        #args.t_0 = int(args.max_epoch // 2)
-        args.t_0 = 10
-        self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, eta_min)
+        lr_min=args.lr_min
+        args.t_0 = int(args.max_epoch)
+        #self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, args.t_0, args.t_mult, lr_min)
+        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda = lambda epoch: ((epoch*epoch/(args.max_epoch*args.max_epoch))+(lr_min/args.lr_max)) ) # check LR @max50epoch.
+        #self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=5, threshold=0.001, min_lr=lr_min)
+
+#        self.amp = bool(args.amp)
+#        self.scaler = amp.GradScaler(enabled=self.amp)
 
         # dataset
         downsample_ratio = args.downsample_ratio # for U-Net like architecture
         if args.dataset.lower() == 'qnrf':
-            self.datasets = {x: Crowd_qnrf(os.path.join(args.data_dir, x),
+            self.datasets = {x: Crowd_qnrf(os.path.join(args.datadir, x),
                                            args.crop_size, downsample_ratio, x) for x in ['train', 'val']}
         elif args.dataset.lower() == 'nwpu':
-            self.datasets = {x: Crowd_nwpu(os.path.join(args.data_dir, x),
+            self.datasets = {x: Crowd_nwpu(os.path.join(args.datadir, x),
                                            args.crop_size, downsample_ratio, x) for x in ['train', 'val']}
         elif args.dataset.lower() == 'sha' or args.dataset.lower() == 'shb':
-            self.datasets = {'train': Crowd_sh(os.path.join(args.data_dir, 'train_data'),
+            self.datasets = {'train': Crowd_sh(os.path.join(args.datadir, 'train_data'),
                                                args.crop_size, downsample_ratio, 'train', use_albumentation=args.use_albumentation),
-                             'val': Crowd_sh(os.path.join(args.data_dir, 'test_data'),
+                             'val': Crowd_sh(os.path.join(args.datadir, 'test_data'),
                                              args.crop_size, downsample_ratio, 'val'),
                              }
         elif args.dataset.lower() == 'cell':
-            self.datasets = {'train': CellDataset(os.path.join(args.data_dir, 'train'),
+            self.datasets = {'train': CellDataset(os.path.join(args.datadir, 'training'),
                                                args.crop_size, args.resize, downsample_ratio, 'train', use_albumentation=args.use_albumentation),
-                             'val': CellDataset(os.path.join(args.data_dir, 'val'),
+                             'val': CellDataset(os.path.join(args.datadir, 'validation'),
                                              args.crop_size, args.resize, downsample_ratio, 'val'),
                              }
-            self.dataset_ul = CellDataset(os.path.join(args.data_dir_ul, 'ssl'),
+            self.dataset_ul = CellDataset(args.datadir_ul,
                                             args.crop_size,
                                             args.resize,
                                             downsample_ratio,
@@ -122,13 +212,36 @@ class Trainer(object):
                                           pin_memory=(True if x == 'train' else False))
                             for x in ['train', 'val']}
 
-        self.dataloader_ul = DataLoader(self.dataset_ul,
-                                          collate_fn=default_collate,
-                                          batch_size=args.batch_size_ul,
-                                          shuffle=True,
-                                          drop_last=True,
-                                          num_workers=args.num_workers * self.device_count,
-                                          pin_memory=True)
+        use_size = len(self.datasets['train'])*2 # use x2 data for unsupervised training
+        if use_size > len(self.dataset_ul):
+            use_indices=None
+            print(f'use images unlabeled : {len(self.dataset_ul)}')
+            self.dataloader_ul = DataLoader(self.dataset_ul,
+                                              collate_fn=default_collate,
+                                              batch_size=args.batch_size_ul,
+                                              shuffle=True,
+                                              drop_last=True,
+                                              num_workers=args.num_workers * self.device_count,
+                                              pin_memory=True)
+        else:
+            np.random.seed(43)
+            use_indices = np.random.choice(len(self.dataset_ul), use_size, replace=False).tolist()
+            print(f'use images unlabeled : {use_size}')
+            self.dataloader_ul = DataLoader(self.dataset_ul,
+                                              collate_fn=default_collate,
+                                              batch_size=args.batch_size_ul,
+                                              drop_last=True,
+                                              num_workers=args.num_workers * self.device_count,
+                                              pin_memory=True,
+                                              sampler=SubsetRandomSampler(use_indices))
+
+#        self.dataloader_ul = DataLoader(self.dataset_ul,
+#                                          collate_fn=default_collate,
+#                                          batch_size=args.batch_size_ul,
+#                                          shuffle=True,
+#                                          drop_last=True,
+#                                          num_workers=args.num_workers * self.device_count,
+#                                          pin_memory=True)
 
         if args.use_ssl:
             from losses.losses import softmax_kl_loss, softmax_mse_loss, softmax_js_loss, consistency_weight
@@ -158,8 +271,9 @@ class Trainer(object):
         self.run["sys/tags"].add(args.neptune_tag)  # tag
 
         # save dir setting
-        sub_dir = 'encoder-{}_input-{}_wot-{}_wtv-{}_reg-{}_nIter-{}_normCood-{}'.format(
-            args.encoder_name, args.crop_size, args.wot, args.wtv, args.reg, args.num_of_iter_in_ot, args.norm_cood)
+        sub_dir = 'encoder-{}_input-{}_wot-{}_wtv-{}_reg-{}_nIter-{}_normCood-{}_spm-{}_deep_supervision-{}_ssl-{}'.format(
+            args.encoder_name, args.crop_size, args.wot, args.wtv, args.reg, args.num_of_iter_in_ot, args.norm_cood,
+            args.scale_pyramid_module, args.deep_supervision, args.use_ssl)
 
         save_dir_root = os.path.join('ckpts', sub_dir)
         if not os.path.exists(save_dir_root):
@@ -203,7 +317,7 @@ class Trainer(object):
         else:
             self.ot_loss = OT_Loss(args.crop_size, downsample_ratio, args.norm_cood, self.device, args.num_of_iter_in_ot, args.reg)
         self.tv_loss = nn.L1Loss(reduction='none').to(self.device)
-        self.mse = nn.MSELoss().to(self.device)
+        #self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
         self.save_list = Save_Handle(max_num=1)
         self.best_mae = np.inf
@@ -214,14 +328,16 @@ class Trainer(object):
     def train(self):
         """training process"""
         args = self.args
-        self.prev_model = copy.deepcopy(self.model)
-        self.prev_optimizer = copy.deepcopy(self.optimizer)
+        early_stopping = EarlyStopping(patience=10, verbose=True)
         for epoch in range(self.start_epoch, args.max_epoch + 1):
             #self.logger.info('-' * 5 + 'Epoch {}/{}'.format(epoch, args.max_epoch) + '-' * 5)
             self.epoch = epoch
             self.train_eopch()
             if epoch % args.val_epoch == 0 and epoch >= args.val_start:
                 self.val_epoch()
+            if early_stopping.early_stop:
+                print("Early stopping")
+                break
 
     def train_eopch(self):
         epoch_ot_loss = AverageMeter()
@@ -238,13 +354,9 @@ class Trainer(object):
         if self.args.use_ssl:
             iters = len(self.dataloader_ul)
             stream = tqdm(zip(cycle(self.dataloaders['train']), self.dataloader_ul), total=iters)
-            #stream = tqdm(range(len(self.dataloader_ul)), ncols=135)
-            #dataloader = iter(zip(cycle(self.dataloaders['train']), self.dataloader_ul))
         else:
             iters = len(self.dataloaders['train'])
             stream = tqdm(zip(self.dataloaders['train'], cycle(self.dataloader_ul)), total=iters)
-            #stream = tqdm(range(len(self.dataloaders['train'])), ncols=135)
-            #dataloader = iter(zip(self.dataloaders['train'], cycle(self.dataloader_ul)))
         for step, (x_l, x_ul) in enumerate(stream):
             inputs, points, gt_discrete = x_l
             if self.args.use_ssl:
@@ -259,6 +371,7 @@ class Trainer(object):
             N = inputs.size(0)
 
             with torch.set_grad_enabled(True):
+#                with amp.autocast(enabled=self.amp):
                 if self.args.deep_supervision:
                     outputs, intermediates = self.model(inputs)
                 else:
@@ -295,7 +408,8 @@ class Trainer(object):
                 del ot_loss, count_loss, tv_loss
 
                 if self.args.deep_supervision:
-                    w_deep_sup = 0.4
+#                    w_deep_sup = 0.4
+                    w_deep_sup = 10
                     w_each = w_deep_sup / len(intermediates)
                     #deep_sup_loss = [w_each*self.criterion(out, masks) for out in intermediates]
                     deep_sup_loss = []
@@ -328,19 +442,26 @@ class Trainer(object):
 
                     del output_ul_main, outputs_ul_aux, loss_unsup
 
-                if torch.isnan(loss):
-                    self.model = self.prev_model
-                    self.optimizer.load_state_dict(self.prev_optimizer.state_dict())
-                else:
-                    self.prev_model = copy.deepcopy(self.model)
-                    self.prev_optimizer = copy.deepcopy(self.optimizer)
+#                loss = self.scaler.scale(loss)
+                epoch_loss.update(loss.item(), N)
 
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
+                #if torch.isnan(loss):
+                #    self.model = self.prev_model
+                #    self.optimizer.load_state_dict(self.prev_optimizer.state_dict())
+                #else:
+                #    self.prev_model = copy.deepcopy(self.model)
+                #    self.prev_optimizer = copy.deepcopy(self.optimizer)
 
+                #    self.optimizer.zero_grad()
+                #    loss.backward()
+                #    self.optimizer.step()
 
+                loss.backward()
+                #self.scaler.step(self.optimizer)
+                #self.scaler.update()
+                self.optimizer.step()
                 self.scheduler.step(self.epoch + step / iters)
+                self.optimizer.zero_grad(set_to_none=True)
 
                 pred_count = torch.sum(outputs.view(N, -1), dim=1).detach().cpu().numpy()
                 pred_err = pred_count - gd_count
@@ -357,7 +478,7 @@ class Trainer(object):
                             np.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg()))
  
             # show image
-            if step % 10 == 0:
+            if step % 2 == 0:
                 # show images to original size (1枚目の画像だけを表示する)
                 vis_img = outputs[0, 0].detach().cpu().numpy()
                 del outputs
@@ -379,12 +500,16 @@ class Trainer(object):
                     show_img = utils.paint_circles(img=overlay,
                                                        points=points,
                                                        color='white')
-                    # visdom
-                    self.vlog.image(imgs=[show_img],
-                              titles=['(Training) Image w/ output heatmap and labeled points'],
-                              window_ids=[1])
-                    ## neptune
-                    #self.run['image_train'].upload(File.as_image(show_img.transpose(1,2,0)))
+                else:
+                    show_img = overlay
+
+                # visdom
+                self.vlog.image(imgs=[show_img],
+                          titles=['(Training) Image w/ output heatmap and labeled points'],
+                          window_ids=[1])
+                ## neptune
+                #self.run['image_train'].upload(File.as_image(show_img.transpose(1,2,0)))
+ 
 
 
         #self.logger.info(
@@ -489,7 +614,7 @@ class Trainer(object):
  
 
             # show image
-            if step % 10 == 0:
+            if step % 5 == 0:
                 # show images to original size (1枚目の画像だけを表示する)
                 vis_img = outputs[0, 0].detach().cpu().numpy()
                 del outputs
@@ -527,14 +652,15 @@ class Trainer(object):
         #                 .format(self.epoch, mse, mae, time.time() - epoch_start))
 
         model_state_dic = self.model.state_dict()
-        if (2.0 * mse + mae) < (2.0 * self.best_mse + self.best_mae):
-            self.best_mse = mse
-            self.best_mae = mae
-            self.logger.info("save best mse {:.2f} mae {:.2f} model epoch {}".format(self.best_mse,
-                                                                                     self.best_mae,
-                                                                                     self.epoch))
-            torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_{}.pth'.format(self.best_count)))
-            self.best_count += 1
+        if self.epoch >= 4:
+            if (2.0 * mse + mae) < (2.0 * self.best_mse + self.best_mae):
+                self.best_mse = mse
+                self.best_mae = mae
+                self.logger.info("save best mse {:.2f} mae {:.2f} model epoch {}".format(self.best_mse,
+                                                                                         self.best_mae,
+                                                                                         self.epoch))
+                torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_{}.pth'.format(self.best_count)))
+                self.best_count += 1
 
         # Log validation losses
         self.vlog.val_losses(terms=[mse,mae],
