@@ -34,9 +34,10 @@ class DecoderBlock(nn.Module):
         self.attention2 = md.Attention(attention_type, in_channels=out_channels)
 
     def forward(self, x, skip=None):
-        #x = F.interpolate(x, scale_factor=2, mode="nearest")
         x = F.interpolate(x, scale_factor=2, mode="bilinear")
         if skip is not None:
+            if x.size()[2:] != skip.size()[2:]:
+                skip = F.interpolate(skip, size=x.size()[2:], scale_factor=None, mode="nearest")
             x = torch.cat([x, skip], dim=1)
             x = self.attention1(x)
         x = self.conv1(x)
