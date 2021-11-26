@@ -8,7 +8,6 @@ from torchvision import transforms
 import random
 import numpy as np
 import pandas as pd
-import scipy.io as sio
 import albumentations as A
 from .augment_and_mix import augment_and_mix
 from pathlib import Path
@@ -44,7 +43,7 @@ class Base(data.Dataset):
 
 
 class ClassificationDataset(Base):
-    def __init__(self, root_path_img, crop_size=330, method='train', flag_csv=None, use_albumentation=0, balanced_over_samping=True, sample_fraction=None):
+    def __init__(self, root_path_img, crop_size=330, method='train', flag_csv=None, use_albumentation=0, balanced_over_samping=False, sample_fraction=None):
         super().__init__(root_path_img, crop_size)
         self.method = method
         if method not in ['train', 'val', 'test']:
@@ -143,9 +142,9 @@ class ClassificationDataset(Base):
         elif self.method == 'val':
             img, label =  self.trans(img), torch.as_tensor(np.array(label))
             return img.type(self.inputs_dtype), label.type(self.targets_dtype)
-        elif self.method in ['val_no_gt', 'test_no_gt']:
-            img = self.trans(img)
-            return img.type(self.inputs_dtype)
+        elif self.method == 'test':
+            img, label =  self.trans(img), torch.as_tensor(np.array(label))
+            return img.type(self.inputs_dtype), label.type(self.targets_dtype), str(img_path)
         else:
             raise
 
